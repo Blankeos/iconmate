@@ -66,8 +66,9 @@ This command will:
 
 - [ ] Paste an actual svg instead of an icon `name` (i.e. `heroicons:heart`). So it integrates better w/ not just icones, but also icon jar where you can copy icons from non-open-source icon libraries (i.e. Untitled UI, Anron Pro).
 - [ ] An `--svg-output-template <TEMPLATE>` argument with %svg% as the variable. So that you can maybe customize the output before it's exported.
-    - [ ] + a `--svg-output-ext-template <TEMPLATE>` i.e. `%iconname%.svg` or `%iconname%.tsx`
+  - [ ] - a `--svg-output-ext-template <TEMPLATE>` i.e. `%iconname%.svg` or `%iconname%.tsx`
 - [ ] Just a `--preset=svg,reactcomp,solidcomp,sveltecomp,vuecomp` - which basically overrides `--svg-output-file-template` and `--svg-output-ext-temlpate` and `--output-line-template`. So you won't need to specify it. Much much easier devx I think? + the default will just be `svg`.
 - [ ] Prompt Mode maybe via `icones-cli prompt` - Basically runs the CLI in interactive mode so you won't need to pass arguments like a menace. Also assumes that you can use the same flags for default values.
 - [ ] A Zed extension (I use Zed, idk if it can create an extra command in Zed?).
 - [ ] A VSCode extension (Seems super doable).
+- [ ] An empty command. Creates an .svg, adds it to the index.ts with a name you can specify. But the .svg file will be empty.
