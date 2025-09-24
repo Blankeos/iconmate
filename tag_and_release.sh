@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# THIS SCRIPT IS CUSTOM - inspired from changesets.
+# The difference is, there is no workflow. So everything runs from your computer.
+# Which also means, no collaboration kind of, not everyone can release.
+
 set -euo pipefail
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -29,13 +34,27 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# Update the Cargo.toml
 echo "🦋 Updating Cargo.toml to version ${NEW}"
 sed -i.bak "s/^version *= *\"[^\"]*\"/version = \"${NEW}\"/" Cargo.toml
 rm Cargo.toml.bak
 
+# Commit
+echo "🦋 Committing version bump ${NEW}"
+git add Cargo.toml
+git commit -m "chore: release ${NAME} v${NEW}"
+
+# ---- s: cargo dist ----
+# Create the git tag.
 echo "🦋 Creating git tag v${NEW}"
 git tag "v${NEW}"
 
-
+# Create release binaries (with cargo-dist)
 echo "🦋 Pushing..."
 # git push --tags
+# ^ WIP
+# ---- e: cargo dist ----
+
+# NPM and Cargo publish
+cargo publish
+# NPM WIP
