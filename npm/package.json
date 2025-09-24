@@ -1,6 +1,6 @@
 {
   "name": "iconmate",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "CLI to fetch icons and save them into your Vite, NextJS, or similar TypeScript project",
   "main": "bin.js",
   "bin": {
@@ -13,8 +13,16 @@
     "type": "git",
     "url": "https://github.com/Blankeos/iconmate.git"
   },
-  "keywords": ["cli", "icons", "vite", "nextjs", "typescript"],
-  "author": "Your Name",
+  "keywords": [
+    "cli",
+    "icons",
+    "icones",
+    "iconify",
+    "vite",
+    "nextjs",
+    "typescript"
+  ],
+  "author": "Blankeos",
   "license": "MIT",
   "files": [
     "install.js",
@@ -24,5 +32,9 @@
   "engines": {
     "node": ">=12"
   },
-  "os": ["darwin", "linux", "win32"]
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ]
 }

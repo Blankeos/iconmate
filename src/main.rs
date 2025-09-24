@@ -192,7 +192,7 @@ async fn run_prompt_mode() -> anyhow::Result<()> {
         None
     } else {
         let icon_raw = Text::new(
-            "🚀 Icon (name like 'stash:chevron' from icones.js.org, full URL, or leave empty)",
+            "🚀 Icon (name like 'heroicons:heart' from icones.js.org, full URL, or leave empty)",
         )
         .prompt()?;
         if icon_raw.is_empty() {
@@ -213,7 +213,7 @@ async fn run_prompt_mode() -> anyhow::Result<()> {
         None
     };
 
-    let name = Text::new("✧ Name (required, e.g., Chevron)")
+    let name = Text::new("✧ Name (required, e.g., Heart)")
         .with_validator(inquire::validator::ValueRequiredValidator::new(
             "Name is required.",
         ))
