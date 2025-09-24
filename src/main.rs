@@ -172,10 +172,62 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Placeholder for a future interactive mode.
-#[allow(dead_code)]
+/// Interactive mode: prompts the user for required values and builds an AppConfig.
 async fn run_prompt_mode() -> anyhow::Result<()> {
-    unimplemented!("Interactive mode (prompt) is not yet implemented.");
+    use inquire::{Select, Text};
+
+    let folder_raw = Text::new("  Folder")
+        .with_default("src/assets/icons/")
+        .prompt()?;
+    let folder = PathBuf::from(folder_raw);
+
+    let preset_opts = vec!["none", "emptysvg"];
+    let preset_raw = Select::new("✦ Preset", preset_opts).prompt()?;
+    let preset = match preset_raw {
+        "emptysvg" => Some(Preset::EmptySvg),
+        _ => None,
+    };
+
+    let icon = if preset.is_some() {
+        None
+    } else {
+        let icon_raw = Text::new(
+            "🚀 Icon (name like 'stash:chevron' from icones.js.org, full URL, or leave empty)",
+        )
+        .prompt()?;
+        if icon_raw.is_empty() {
+            None
+        } else {
+            Some(icon_raw)
+        }
+    };
+
+    let filename = if icon.is_none() {
+        let f = Text::new(" Filename (without .svg)").prompt()?;
+        if f.is_empty() {
+            anyhow::bail!("Filename is required when no icon is provided or emptysvg preset.");
+        } else {
+            Some(f)
+        }
+    } else {
+        None
+    };
+
+    let name = Text::new("✧ Name (required, e.g., Chevron)")
+        .with_validator(inquire::validator::ValueRequiredValidator::new(
+            "Name is required.",
+        ))
+        .prompt()?;
+
+    let config = AppConfig {
+        folder,
+        name,
+        icon,
+        filename,
+        output_line_template: "export { default as Icon%name% } from './%icon%.svg';".to_string(),
+        preset,
+    };
+    run_app(config).await
 }
 
 #[tokio::main]
