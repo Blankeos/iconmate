@@ -52,20 +52,21 @@ if [ -f "npm/package.json" ]; then
 fi
 
 # Commit
-# echo "🦋 Committing version bump ${NEW}"
-# git add .
-# git commit -m "chore: release ${NAME} v${NEW}"
+echo "🦋 Committing version bump ${NEW}..."
+sleep 2 # wait a 1 sec because Cargo.lock will get updated
+git add .
+git commit -m "chore: release ${NAME} v${NEW}"
 
 # ============================================
 # cargo-dist Publish GitHub Releases via actions
 # ============================================
 
 # Create the git tag.
-# echo "🦋 Creating git tag v${NEW}"
-# git tag "v${NEW}"
+echo "🦋 Creating git tag v${NEW}"
+git tag "v${NEW}"
 
 # Create release binaries (with cargo-dist)
-# echo "🦋 Pushing..."
+echo "🦋 Pushing..."
 # git push --tags
 
 
