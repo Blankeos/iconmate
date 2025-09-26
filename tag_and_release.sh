@@ -53,9 +53,9 @@ fi
 
 # Commit
 echo "🦋 Committing version bump ${NEW}..."
-sleep 2 # wait a 1 sec because Cargo.lock will get updated
+sleep 2 # wait a 2 secs because Cargo.lock will get updated
 git add .
-git commit -m "chore: release ${NAME} v${NEW}"
+git commit -m "release: ${NAME} v${NEW}"
 
 # ============================================
 # cargo-dist Publish GitHub Releases via actions
@@ -67,8 +67,7 @@ git tag "v${NEW}"
 
 # Create release binaries (with cargo-dist)
 echo "🦋 Pushing..."
-# git push --tags
-
+git push --tags
 
 # ============================================
 # PUBLISHING: I put it here as documentation, but this is manual for now!
@@ -78,4 +77,5 @@ echo "🦋 Pushing..."
 # cargo publish
 
 # npm
+# cd npm
 # npm publish
