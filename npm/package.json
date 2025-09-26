@@ -1,6 +1,6 @@
 {
   "name": "iconmate",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI to fetch icons and save them into your Vite, NextJS, or similar TypeScript project",
   "main": "bin.js",
   "bin": {
