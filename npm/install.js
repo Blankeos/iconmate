@@ -8,7 +8,7 @@ const { pipeline } = require("stream");
 const { promisify } = require("util");
 
 // Version should match your Rust crate version
-const VERSION = "0.0.1";
+const VERSION = require("./package.json").version;
 const BINARY_NAME = "iconmate";
 
 function getPlatformInfo() {
