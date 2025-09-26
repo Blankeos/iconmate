@@ -1,4 +1,4 @@
-# Iconmate 💚
+# iconmate 💚
 
 Your new favorite way to manage icons for your Vite, NextJS projects without icon libraries!
 
@@ -27,10 +27,10 @@ iconmate
 > 📁 Folder (src/assets/icons/) # Enter
 > ✨ Preset # Choose react
 > 🚀 Icon # heroicons:heart
-> 💎 Name # The "Heart"
+> 💎 Name # Heart
 ```
 
-✨ That's it. Interactive mode guides you through adding icons to your project!
+✨ That's it. The interactive CLI guides you through adding icon to your project!
 
 ```tsx
 // 👇 Then, you can just easily use any icon on your project like this!
@@ -45,7 +45,7 @@ function MyApp() {
 You can also add sensible defaults by passing flags:
 
 ```bash
-iconmate --folder src/components/Icons/
+iconmate --folder src/components/Icons/ --folder src/components/icons
 iconmate --folder src/components/Icons/ --icon heroicons:heart --name Heart
 ```
 
@@ -74,7 +74,7 @@ bunx iconmate
 > [!NOTE]
 > **Note for Bun users:** Bun doesn't run `postinstall` scripts [by default](https://bun.com/guides/install/trusted) which is needed to install the iconmate binary. Add `"trustedDependencies": ["iconmate"]` to your `package.json` to do it! But you're only limited to running it with a package.json.
 >
-> Recommended: Just install it globally or use pnpm
+> Recommended: Just use pnpx for quick one-off usage. If in a project, either install globally or configure trustDependencies.
 
 ### Install from Cargo 🦀
 
@@ -92,9 +92,7 @@ cargo install --path .
 
 ## Framework Presets
 
-```bash
-iconmate --folder src/components/Icons/ --icon heroicons:heart --name Heart --preset react
-```
+Determines the output filetype and the contents inside that file type.
 
 | Preset     | File Type | Framework         |
 | ---------- | --------- | ----------------- |
@@ -111,8 +109,8 @@ iconmate --folder src/components/Icons/ --icon heroicons:heart --name Heart --pr
 > - [SolidJS (Vite)](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library#use-svg-only-with-solidjs)
 > - [React (Vite)](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library#use-svg-only-with-react-vite)
 > - [React (NextJS)](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library#use-svg-only-with-react-nextjs)
-> - Vue - (contribute here)
-> - Svelte - couldn't find an svgr integration.
+> - Vue - contribution welcome!
+> - Svelte - couldn't find an svgr integration :(
 
 ## Command Line
 
@@ -157,13 +155,19 @@ iconmate add --folder src/assets/icons --icon '<svg>...</svg>' --name Heart
 iconmate add --folder src/assets/icons --icon heroicons:heart --name Heart --output-line-template "export { ReactComponent as Icon%name% } from './%icon%.svg?react';"
 ```
 
+### Delete icons
+
+```bash
+iconmate delete --folder src/assets/icons
+```
+
 ### Package.json Scripts
 
 Best practice: Add sensible defaults to your script runner.
 
 ```jsonc
 "scripts": {
-  // Usage: npm run iconmate
+  // Usage: npm run iconmate (usually this is the only command you need)!
   "iconmate": "iconmate --folder src/assets/icons/"
 
   // Usage: npm run iconmate-react
@@ -191,10 +195,11 @@ Best practice: Add sensible defaults to your script runner.
 ## Why this structure?
 
 1. **Copy-paste workflow**: Find icon on icones.js.org → copy name → paste into iconmate
-2. **Organized by default**: Everything goes into `index.ts` exports automatically
-3. **TypeScript ready**: Generated code is fully typed
-4. **Git-friendly**: Plain SVG files, no binary assets
-5. **Lightning fast**: Native Rust binary, no Node.js startup time
+2. **Organized by default**: Everything goes into `index.ts` exports automatically and just typing `<Icon` will autosuggest from your current collection. Just regular TS behavior.
+3. **TypeScript ready**: Generated code is fully typed. Pass custom width, height, fills, you name it.
+4. **Customizable** 🎨: Want to add a default Tailwind class on every icon? custom props? Just add it to the file!
+5. **Git-friendly**: Plain SVG files, no binary assets
+6. **Lightning fast**: Native Rust binary, no Node.js startup time
 
 ## Contributing
 
@@ -204,11 +209,11 @@ Contributions are welcome—pull requests for bug fixes, new framework presets, 
 
 ## What's Completed from the Roadmap
 
-✅ Interactive prompt mode
-✅ Framework presets (React, Vue, Svelte, Solid)
-✅ URL and raw SVG support
-✅ Custom export templates
-✅ Zero-config installation
+- ✅ Interactive prompt mode
+- ✅ Framework presets (React, Vue, Svelte, Solid)
+- ✅ URL and raw SVG support
+- ✅ Custom export templates
+- ✅ Zero-config installation
 
 ### Original Future Plans
 
@@ -216,7 +221,8 @@ Contributions are welcome—pull requests for bug fixes, new framework presets, 
 - [x] Paste an actual svg instead of an icon `name`.
 - [x] Just a `--preset=svg,react,solid,svelte,vue` - which basically overrides templates. Default is `svg`.
 - [x] Prompt Mode via `iconmate` - Interactive mode so you won't need to pass arguments.
-- [ ] Other frameworks (i.e. --preset=flutter) or Go, Rust, GUI apps (Not sure how they work yet).
+- [x] Delete an icon using `iconmate delete`
+- [ ] Other frameworks i.e. --preset=flutter or Go/Rust GUI apps? (Not sure how they work yet though).
 - [ ] ~Zed or VSCode Extension~ (seems unnecessary now, it's just a CLI)
 
 ---
