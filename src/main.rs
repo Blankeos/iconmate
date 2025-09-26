@@ -145,6 +145,7 @@ fn _determine_icon_source_type(icon_source: Option<&String>) -> IconSourceType {
 async fn _icon_source_to_svg(
     icon_source: &Option<String>,
     append_attribute: Option<&'static str>,
+    remove_comments: bool,
 ) -> anyhow::Result<String> {
     // If icon_source is missing, return a minimal SVG (Note: rust skill issue idk how else to just reuse the last clause in the match below)
     let Some(icon_source) = icon_source else {
@@ -194,6 +195,14 @@ async fn _icon_source_to_svg(
                 content = format!("{} {}{}", before, attr, after);
             }
         }
+    }
+
+    // 2. Remove Comments
+    if remove_comments {
+        // Remove HTML comments from SVG content
+        // This regex matches <!-- ... --> including any content in between
+        let re = regex::Regex::new(r"<!--.*?-->").unwrap();
+        content = re.replace_all(&content, "").to_string();
     }
 
     Ok(content)
@@ -268,7 +277,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 3: React
         (icon_source, Some(Preset::React)) => {
-            let content = _icon_source_to_svg(icon_source, Some("{...props}")).await?;
+            let content = _icon_source_to_svg(icon_source, Some("{...props}"), true).await?;
 
             // Wrap the SVG in a React component template
             let content = format!(
@@ -287,7 +296,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 4: Svelte
         (icon_source, Some(Preset::Svelte)) => {
-            let content = _icon_source_to_svg(icon_source, Some("{...props}")).await?;
+            let content = _icon_source_to_svg(icon_source, Some("{...props}"), false).await?;
 
             // Wrap the SVG in a Svelte component template
             let content = format!(
@@ -306,7 +315,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 5: Solid
         (icon_source, Some(Preset::Solid)) => {
-            let content = _icon_source_to_svg(icon_source, Some("{...props}")).await?;
+            let content = _icon_source_to_svg(icon_source, Some("{...props}"), true).await?;
 
             // Wrap the SVG in a Solid component template
             let content = format!(
@@ -325,7 +334,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 6: Vue
         (icon_source, Some(Preset::Vue)) => {
-            let content = _icon_source_to_svg(icon_source, Some("v-bind=\"$props\"")).await?;
+            let content = _icon_source_to_svg(icon_source, Some("v-bind=\"$props\""), true).await?;
 
             // Wrap the SVG in a Vue component template
             let content = format!(
@@ -344,7 +353,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 7: Only an icon is provided.
         (Some(icon_source), None) => {
-            let content = _icon_source_to_svg(&Some(icon_source.clone()), None).await?;
+            let content = _icon_source_to_svg(&Some(icon_source.clone()), None, false).await?;
 
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
