@@ -34,27 +34,47 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# ============================================
+# Update & Commit - Release manifests
+# ============================================
+
 # Update the Cargo.toml
 echo "🦋 Updating Cargo.toml to version ${NEW}"
 sed -i.bak "s/^version *= *\"[^\"]*\"/version = \"${NEW}\"/" Cargo.toml
 rm Cargo.toml.bak
 
-# Commit
-echo "🦋 Committing version bump ${NEW}"
-git add Cargo.toml
-git commit -m "chore: release ${NAME} v${NEW}"
+# Update npm/package.json if it exists
+if [ -f "npm/package.json" ]; then
+    echo "🦋 Updating npm/package.json to version ${NEW}"
+    sed -i.bak "s/\"version\":[[:space:]]*\"[^\"]*\"/\"version\": \"${NEW}\"/" npm/package.json
+    rm npm/package.json.bak
+    git add npm/package.json
+fi
 
-# ---- s: cargo dist ----
+# Commit
+# echo "🦋 Committing version bump ${NEW}"
+# git add .
+# git commit -m "chore: release ${NAME} v${NEW}"
+
+# ============================================
+# cargo-dist Publish GitHub Releases via actions
+# ============================================
+
 # Create the git tag.
-echo "🦋 Creating git tag v${NEW}"
-git tag "v${NEW}"
+# echo "🦋 Creating git tag v${NEW}"
+# git tag "v${NEW}"
 
 # Create release binaries (with cargo-dist)
-echo "🦋 Pushing..."
+# echo "🦋 Pushing..."
 # git push --tags
-# ^ WIP
-# ---- e: cargo dist ----
 
-# NPM and Cargo publish
-cargo publish
-# NPM WIP
+
+# ============================================
+# PUBLISHING: I put it here as documentation, but this is manual for now!
+# ============================================
+
+# crates.io
+# cargo publish
+
+# npm
+# npm publish

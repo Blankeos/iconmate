@@ -256,7 +256,6 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 2: Only a preset is provided.
         (None, Some(Preset::EmptySvg)) => {
-            println!("Using preset: emptysvg");
             let content = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"></svg>"#.to_string();
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
@@ -269,7 +268,6 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 3: React
         (icon_source, Some(Preset::React)) => {
-            println!("Using preset: react");
             let content = _icon_source_to_svg(icon_source, Some("{...props}")).await?;
 
             // Wrap the SVG in a React component template
@@ -289,7 +287,6 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 4: Svelte
         (icon_source, Some(Preset::Svelte)) => {
-            println!("Using preset: svelte");
             let content = _icon_source_to_svg(icon_source, Some("{...props}")).await?;
 
             // Wrap the SVG in a Svelte component template
@@ -309,7 +306,6 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 5: Solid
         (icon_source, Some(Preset::Solid)) => {
-            println!("Using preset: solid");
             let content = _icon_source_to_svg(icon_source, Some("{...props}")).await?;
 
             // Wrap the SVG in a Solid component template
@@ -329,7 +325,6 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // Case 6: Vue
         (icon_source, Some(Preset::Vue)) => {
-            println!("Using preset: vue");
             let content = _icon_source_to_svg(icon_source, Some("v-bind=\"$props\"")).await?;
 
             // Wrap the SVG in a Vue component template
@@ -426,7 +421,7 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
     let preset = match &cli.preset {
         Some(p) => {
-            println!("✦ Preset: emptysvg");
+            println!("> ✦ Preset: emptysvg");
             Some(p.clone())
         }
         None => {
@@ -486,7 +481,7 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
     let icon = match &cli.icon {
         Some(i) => {
-            println!("🚀 Icon: {}", i);
+            println!("> 🚀 Icon: {}", i);
             Some(i.clone())
         }
         None => {
@@ -509,12 +504,12 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
     let filename = match &cli.filename {
         Some(f) => {
-            println!("Filename: {}", f);
+            println!(">  Filename: {}", f);
             Some(f.clone())
         }
         None => match _determine_icon_source_type(icon.as_ref()) {
             IconSourceType::None | IconSourceType::SvgContent => {
-                let f = Text::new("Filename (without extension like .svg, or leave empty)")
+                let f = Text::new(" Filename (without extension like .svg, or leave empty)")
                     .with_render_config(render_config.clone())
                     .prompt()?;
                 if f.is_empty() {
@@ -531,7 +526,7 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
     let name = match &cli.name {
         Some(n) => {
-            println!("Name: {}", n);
+            println!("> ✧ Name: {}", n);
             n.clone()
         }
         None => Text::new("✧ Name (required, e.g., Heart)")
