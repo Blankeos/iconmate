@@ -2,11 +2,11 @@ use clap::ValueEnum;
 use ratatui::layout::{Constraint, Rect};
 use reqwest::Url;
 
-#[derive(ValueEnum, Clone, Debug, PartialEq)]
+#[derive(ValueEnum, Clone, Debug, PartialEq, Hash)]
 pub enum Preset {
     /// Use a blank SVG.
     #[value(name = "emptysvg")]
-    EmptySvg,
+    Svg,
 
     /// React Component .tsx
     #[value(name = "react")]
@@ -24,23 +24,61 @@ pub enum Preset {
     #[value(name = "vue")]
     Vue,
 }
-pub const PRESETS: &[Preset] = &[
-    Preset::EmptySvg,
-    Preset::React,
-    Preset::Svelte,
-    Preset::Solid,
-    Preset::Vue,
+
+impl Preset {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Preset::Svg => "emptysvg",
+            Preset::React => "react",
+            Preset::Svelte => "svelte",
+            Preset::Solid => "solid",
+            Preset::Vue => "vue",
+        }
+    }
+}
+
+/// A helper struct that pairs a preset with its human-readable description
+#[derive(Debug, Clone)]
+pub struct PresetOption {
+    pub preset: Preset,
+    pub description: &'static str,
+}
+
+pub const PRESETS_OPTIONS: &[PresetOption] = &[
+    PresetOption {
+        preset: Preset::Svg,
+        description: "Outputs an svg (.svg)",
+    },
+    PresetOption {
+        preset: Preset::React,
+        description: "Outputs a React component (.tsx)",
+    },
+    PresetOption {
+        preset: Preset::Svelte,
+        description: "Outputs a Svelte component (.svelte)",
+    },
+    PresetOption {
+        preset: Preset::Solid,
+        description: "Outputs a SolidJS component (.tsx)",
+    },
+    PresetOption {
+        preset: Preset::Vue,
+        description: "Outputs a Vue component (.vue)",
+    },
 ];
 
-/// helper function to create a centered rect using up certain percentage of the available rect `r`
-pub fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let vertical = ratatui::layout::Layout::vertical([Constraint::Percentage(percent_y)])
-        .flex(ratatui::layout::Flex::Center);
-    let horizontal = ratatui::layout::Layout::horizontal([Constraint::Percentage(percent_x)])
-        .flex(ratatui::layout::Flex::Center);
-    let [area] = vertical.areas(area);
-    let [area] = horizontal.areas(area);
-    area
+/// helper function to create a centered rect using up certain maximum dimensions `r`
+pub fn popup_area(area: Rect, max_width: u16, max_height: u16) -> Rect {
+    let width = max_width.min(area.width);
+    let height = max_height.min(area.height);
+    let horizontal_margin = area.width.saturating_sub(width) / 2;
+    let vertical_margin = area.height.saturating_sub(height) / 2;
+    Rect {
+        x: area.x + horizontal_margin,
+        y: area.y + vertical_margin,
+        width,
+        height,
+    }
 }
 
 /// Struct to hold icon information for deletion

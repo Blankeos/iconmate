@@ -132,14 +132,14 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         &config.preset,
     ) {
         // Case 1: Icon is provided AND the preset is EmptySvg. This is the only mutual exclusivity.
-        (Some(_), Some(Preset::EmptySvg)) => {
+        (Some(_), Some(Preset::Svg)) => {
             anyhow::bail!(
                 "The --icon argument cannot be used with the --preset emptysvg. Please provide only one or the other."
             );
         }
 
         // Case 2: Only a preset is provided.
-        (None, Some(Preset::EmptySvg)) => {
+        (None, Some(Preset::Svg)) => {
             let content = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"></svg>"#.to_string();
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
@@ -378,7 +378,7 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
             // My rust skill issue doesn't know how to return this as just 1 item.
             match preset_raw.key {
-                "emptysvg" => Some(Preset::EmptySvg),
+                "emptysvg" => Some(Preset::Svg),
                 "react" => Some(Preset::React),
                 "svelte" => Some(Preset::Svelte),
                 "solid" => Some(Preset::Solid),
@@ -394,7 +394,7 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
             Some(i.clone())
         }
         None => {
-            if matches!(preset, Some(Preset::EmptySvg)) {
+            if matches!(preset, Some(Preset::Svg)) {
                 None
             } else {
                 let icon_raw = Text::new(

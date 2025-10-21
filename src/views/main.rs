@@ -40,8 +40,9 @@ pub fn render_sidebar(f: &mut Frame, area: Rect, _app: &App) {
         ListItem::new("↑↓ - Navigate (or k,j)"),
         ListItem::new("?  - Help"),
         ListItem::new("/  - Search"),
+        ListItem::new("q  - Quit"),
     ];
-    let list = List::new(items).highlight_symbol(">> ");
+    let list = List::new(items).highlight_symbol("→ ");
     let list_block = Block::default()
         .borders(Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded);
@@ -104,7 +105,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
             .border_type(ratatui::widgets::BorderType::Rounded),
     )
     .column_spacing(2)
-    .highlight_symbol(">> ")
+    .highlight_symbol("→  ")
     .row_highlight_style(Style::default().bg(Color::DarkGray));
 
     let mut state = ratatui::widgets::TableState::default();
