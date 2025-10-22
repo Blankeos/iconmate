@@ -3,7 +3,6 @@ use std::sync::mpsc::sync_channel;
 use crate::app_state::{App, AppFocus};
 use crate::utils::{IconEntry, PRESETS_OPTIONS, Preset, PresetOption, popup_area};
 use ratatui::Frame;
-use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
@@ -44,6 +43,13 @@ impl AddPopupState {
         if self.current_input == 1 {
             match input.key {
                 Key::Tab | Key::Enter => {
+                    // Save the selected preset
+                    if !self.presets_filtered.is_empty()
+                        && self.preset_index < self.presets_filtered.len()
+                    {
+                        self.preset = Some(self.presets_filtered[self.preset_index].preset.clone());
+                    }
+
                     self.current_input = (self.current_input + 1) % self.inputs.len();
                     self.sync_cursor(self.current_input);
                 }
@@ -73,6 +79,17 @@ impl AddPopupState {
                     if self.current_input == 1 {
                         self.inputs[1].input(input);
                         self.preset_filter = self.inputs[1].lines().join("\n");
+
+                        self.presets_filtered = PRESETS_OPTIONS
+                            .iter()
+                            .filter(|opt| {
+                                let filter = self.preset_filter.to_lowercase();
+                                filter.is_empty()
+                                    || filter.contains(opt.preset.to_str())
+                                    || opt.description.to_lowercase().contains(&filter)
+                            })
+                            .cloned()
+                            .collect();
                         return;
                     }
                 }
@@ -83,6 +100,8 @@ impl AddPopupState {
     pub fn handlekeys_text_area(&mut self, input: Input) {
         match input.key {
             Key::Tab => {
+                // Save the icon value
+                self.icon = Some(self.inputs[2].lines().join("\n"));
                 self.current_input = (self.current_input + 1) % self.inputs.len();
                 self.sync_cursor(self.current_input);
             }
@@ -103,6 +122,14 @@ impl AddPopupState {
     pub fn handlekeys_text_input(&mut self, input: Input) {
         match input.key {
             Key::Tab | Key::Enter => {
+                // Save the current input value before moving to next
+                let value = self.inputs[self.current_input].lines().join("");
+                match self.current_input {
+                    0 => self.folder = Some(value),   // folder
+                    3 => self.filename = Some(value), // filename
+                    4 => self.name = Some(value),     // name
+                    _ => {}
+                }
                 self.current_input = (self.current_input + 1) % self.inputs.len();
                 self.sync_cursor(self.current_input);
             }
@@ -170,13 +197,14 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         .direction(ratatui::layout::Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Length(3), // Title
-            Constraint::Length(3), // Folder
-            Constraint::Length(7), // Preset
-            Constraint::Length(5), // Icon
-            Constraint::Length(3), // Filename
-            Constraint::Length(3), // Name
-            Constraint::Min(0),    // Help text
+            Constraint::Length(3),  // Title
+            Constraint::Length(3),  // Folder
+            Constraint::Length(7),  // Preset
+            Constraint::Length(5),  // Icon
+            Constraint::Length(3),  // Filename
+            Constraint::Length(3),  // Name
+            Constraint::Min(0),     // Help text
+            Constraint::Length(20), //
         ])
         .split(area);
 
@@ -198,6 +226,20 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             String::from(" Name"),
         ];
 
+        // Debug block - shows all saved values for development
+        let debug_text = format!(
+            "folder: {:?}\npreset: {:?}\nicon: {:?}\nfilename: {:?}\nname: {:?}",
+            state.folder, state.preset, state.icon, state.filename, state.name
+        );
+        let debug_block = Block::default()
+            .borders(Borders::ALL)
+            .title("Debug Values")
+            .style(Style::default().fg(Color::DarkGray));
+        let debug_paragraph = Paragraph::new(debug_text)
+            .block(debug_block)
+            .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(debug_paragraph, layout[7]);
+
         // Render each field individually with textarea
         let folder_block = Block::default()
             .borders(Borders::ALL)
@@ -208,19 +250,15 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             })
             .title(labels[0].clone());
         state.inputs[0].set_block(folder_block);
+        state.inputs[0].set_cursor_line_style(Style::default());
         f.render_widget(&state.inputs[0], layout[1]);
 
         // Create a selectable list for preset
         let mut state_store = ratatui::widgets::ListState::default();
         let mut items: Vec<ListItem> = {
-            let filtered: Vec<_> = PRESETS_OPTIONS
+            let filtered: Vec<_> = state
+                .presets_filtered
                 .iter()
-                .filter(|p| {
-                    let filter = state.preset_filter.to_lowercase();
-                    filter.is_empty()
-                        || filter.contains(p.preset.to_str())
-                        || p.description.to_lowercase().contains(&filter)
-                })
                 .map(|p| {
                     ListItem::new(format!(
                         //  https://stackoverflow.com/questions/50458144/what-is-the-easiest-way-to-pad-a-string-with-0-to-the-left
@@ -282,6 +320,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                 .alignment(Alignment::Left),
             );
         state.inputs[2].set_block(icon_block);
+        state.inputs[2].set_cursor_line_style(Style::default());
         f.render_widget(&state.inputs[2], layout[3]);
 
         let filename_block = Block::default()
@@ -291,8 +330,16 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             } else {
                 Style::default()
             })
-            .title(labels[3].clone());
+            .title(labels[3].clone())
+            .title(
+                Line::from(crate::utils::filename_from_preset(
+                    Some(state.inputs[3].lines().join("")),
+                    state.preset.clone(),
+                ))
+                .alignment(Alignment::Right),
+            );
         state.inputs[3].set_block(filename_block);
+        state.inputs[3].set_cursor_line_style(Style::default());
         f.render_widget(&state.inputs[3], layout[4]);
 
         let name_value = state.inputs[4].lines().join("");
@@ -306,13 +353,14 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             .title(format!("{}", labels[4]))
             .title(
                 Line::from(if name_value.is_empty() {
-                    String::from("ex. <Icon{} />")
+                    String::from("usage: <Icon{} />")
                 } else {
-                    format!("ex. <Icon{} />", name_value)
+                    format!("usage: <Icon{} />", name_value)
                 })
                 .alignment(Alignment::Right),
             );
         state.inputs[4].set_block(name_block);
+        state.inputs[4].set_cursor_line_style(Style::default());
         f.render_widget(&state.inputs[4], layout[5]);
     }
 

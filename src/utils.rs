@@ -210,3 +210,32 @@ pub fn _make_svg_filename(
         (stem, ext)
     }
 }
+
+// Util for tui view in add.
+pub fn filename_from_preset(file_name: Option<String>, preset: Option<Preset>) -> String {
+    if let Some(preset) = preset {
+        let ext = match preset {
+            Preset::Svg => "svg",
+            Preset::React => "tsx",
+            Preset::Svelte => "svelte",
+            Preset::Solid => "tsx",
+            Preset::Vue => "vue",
+        };
+
+        if let Some(name) = file_name {
+            if name.contains('.') {
+                return name;
+            } else {
+                return format!("{}.{}", name, ext);
+            }
+        } else {
+            return format!("component.{}", ext);
+        }
+    }
+
+    if let Some(name) = file_name {
+        return name;
+    }
+
+    "".to_string()
+}
