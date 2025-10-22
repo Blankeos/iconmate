@@ -86,6 +86,14 @@ impl AddPopupState {
                 self.current_input = (self.current_input + 1) % self.inputs.len();
                 self.sync_cursor(self.current_input);
             }
+            Key::Char('v') if input.ctrl || input.alt => {
+                // Cmd+V on macOS (alt+v in crossterm), Ctrl+V on Linux/Windows . ⌘
+                if let Ok(mut ctx) = arboard::Clipboard::new() {
+                    if let Ok(text) = ctx.get_text() {
+                        self.inputs[self.current_input].insert_str(&text);
+                    }
+                }
+            }
             _ => {
                 self.inputs[self.current_input].input(input);
             }
@@ -252,11 +260,27 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         let icon_block = Block::default()
             .borders(Borders::ALL)
             .border_style(if state.current_input == 2 {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(Color::Green)
             } else {
                 Style::default()
             })
-            .title(labels[2].clone());
+            .title(labels[2].clone())
+            .title_bottom(
+                Line::from(if state.current_input == 2 {
+                    "Tab to continue"
+                } else {
+                    ""
+                })
+                .alignment(Alignment::Right),
+            )
+            .title_bottom(
+                Line::from(if state.current_input == 2 {
+                    "ctrl+v to paste"
+                } else {
+                    ""
+                })
+                .alignment(Alignment::Left),
+            );
         state.inputs[2].set_block(icon_block);
         f.render_widget(&state.inputs[2], layout[3]);
 
