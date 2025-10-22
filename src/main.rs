@@ -462,45 +462,6 @@ impl std::fmt::Display for IconEntry {
         write!(f, "{} — {}", self.name, self.file_path)
     }
 }
-/// Parses an export line to extract icon name and file path
-fn _parse_export_line(line: &str) -> Option<IconEntry> {
-    // Example line: "export { default as IconWallet } from './ic:baseline-account-balance-wallet.svg';"
-    // or: "export { default as IconHeart } from './heroicons:heart.svg?react';"
-    // or: "export { default as IconHeart } from './heroicons:heart.tsx';"
-    // or: "export { default as IconHeart } from './heroicons:heart.svg';"
-
-    // Trim whitespace and check for export pattern
-    let line = line.trim();
-    if let Some(export_start) = line.find("export { default as Icon") {
-        // Find the name between "Icon" and "}"
-        let after_icon = &line[export_start + 24..];
-        if let Some(name_end) = after_icon.find('}') {
-            let name = after_icon[..name_end].trim();
-
-            // Extract file path from the 'from' part
-            if let Some(from_start) = line.find("from '") {
-                let path_start = from_start + 6;
-                if let Some(path_end) = line[path_start..].find('\'') {
-                    let raw_path = &line[path_start..path_start + path_end];
-                    // Remove leading ./ if present
-                    let cleaned_path = raw_path.trim_start_matches("./");
-                    // Remove query parameters like "?raw" or "?react"
-                    let cleaned_path = if let Some(query_pos) = cleaned_path.find('?') {
-                        &cleaned_path[..query_pos]
-                    } else {
-                        cleaned_path
-                    };
-
-                    return Some(IconEntry {
-                        name: name.to_string(),
-                        file_path: cleaned_path.to_string(),
-                    });
-                }
-            }
-        }
-    }
-    None
-}
 
 /// Interactive mode: deleting an icon from a select list of icons.
 async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
@@ -534,7 +495,7 @@ async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
     let mut icons = Vec::new();
 
     for line in contents.lines() {
-        if let Some(icon_entry) = _parse_export_line(line) {
+        if let Some(icon_entry) = crate::utils::parse_export_line_ts(line) {
             icons.push(icon_entry);
         }
     }
@@ -586,7 +547,7 @@ async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
         }
 
         // Remove the export line from index.ts content
-        if let Some(line_to_remove) = _parse_export_line(&contents) {
+        if let Some(line_to_remove) = crate::utils::parse_export_line_ts(&contents) {
             if line_to_remove.name == icon_to_delete.name
                 && line_to_remove.file_path == icon_to_delete.file_path
             {
@@ -649,9 +610,19 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Prompt {}) => run_prompt_mode(&args).await,
         Some(Commands::Delete { folder: _ }) => run_delete_prompt_mode(&args).await,
         None => {
-            tui::run().await
-            // run_prompt_mode(&args).await
-            // run_prompt_mode(&args).await
+            let config = app_state::AppConfig {
+                folder: args
+                    .folder
+                    .unwrap_or_else(|| PathBuf::from("src/assets/icons"))
+                    .display()
+                    .to_string(),
+                preset: match args.preset {
+                    Some(p) => Some(format!("{:?}", p)),
+                    None => None,
+                },
+                template: Some(args.output_line_template),
+            };
+            tui::run(config).await
         }
     }
 }

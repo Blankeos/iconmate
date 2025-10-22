@@ -82,7 +82,7 @@ pub fn popup_area(area: Rect, max_width: u16, max_height: u16) -> Rect {
 }
 
 /// Struct to hold icon information for deletion
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IconEntry {
     pub name: String,
     pub file_path: String,
@@ -238,4 +238,142 @@ pub fn filename_from_preset(file_name: Option<String>, preset: Option<Preset>) -
     }
 
     "".to_string()
+}
+
+/// Util: Reads a file line-by-line and extracts every icon entry that matches
+/// the template used by the current project.
+/// Returns a vector of `IconEntry` with the name and absolute file path.
+pub fn get_existing_icons(folder_path: &str) -> anyhow::Result<Vec<IconEntry>> {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::path::Path;
+
+    let index_path = Path::new(folder_path).join("index.ts"); // FUTURE: for flutter suport, make sure to configure this + the parsing of it.
+
+    let file = File::open(&index_path)?;
+
+    let reader = BufReader::new(file);
+
+    let mut icons = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        // Skip empty lines and comments
+        if line.trim().is_empty() || line.trim_start().starts_with("//") {
+            continue;
+        }
+
+        if let Some(icon_entry) = parse_export_line_ts(&line) {
+            icons.push(icon_entry);
+        }
+    }
+
+    Ok(icons)
+}
+
+/// For parsing a single export line in typescript.
+pub fn parse_export_line_ts(line: &str) -> Option<IconEntry> {
+    use std::path::Path;
+
+    // Log the line
+    let line = line.trim();
+
+    // Skip empty lines and comments
+    if line.is_empty() || line.trim_start().starts_with("//") {
+        return None;
+    }
+
+    // Example line:   export { default as IconGitHub } from "./devicon:github.svg";
+    // We look for:    export { default as <Name> } from "<file_path>";
+    let parts: Vec<&str> = line.splitn(5, ' ').collect();
+    if parts.len() >= 5
+        && parts[0] == "export"
+        && parts[1] == "{"
+        && parts[3] == "as"
+        && parts[2] == "default"
+    {
+        if let Some(name_end) = line.find('}') {
+            let name = line["export { default as ".len()..name_end].trim();
+            if let Some(from_start) = line[name_end..].find("from \"") {
+                let from_start = name_end + from_start + "from \"".len();
+                if let Some(path_end) = line[from_start..].find('"') {
+                    let relative_path = &line[from_start..from_start + path_end];
+                    let abs_path = Path::new(relative_path)
+                        .canonicalize()
+                        .unwrap_or_else(|_| Path::new(relative_path).to_path_buf());
+
+                    return Some(IconEntry {
+                        name: name.to_string(),
+                        file_path: abs_path.to_string_lossy().to_string(),
+                    });
+                }
+            }
+        }
+    }
+    None
+}
+
+// FUTURE:
+// pub fn _parse_export_line_dart(line: &str) -> Option<IconEntry> {}
+
+/// Deletes an IconEntry based on its file path
+pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
+    use std::fs;
+    use std::path::Path;
+
+    let path = Path::new(file_path);
+
+    // Delete the icon file
+    if path.exists() {
+        fs::remove_file(path)?;
+        println!("Deleted icon file: {}", path.display());
+    } else {
+        eprintln!("Icon file not found: {}", path.display());
+        return Ok(());
+    }
+
+    // Find the parent folder and index.ts
+    if let Some(parent) = path.parent() {
+        let index_path = parent.join("index.ts");
+
+        if index_path.exists() {
+            // Read the current index.ts
+            let contents = fs::read_to_string(&index_path)?;
+
+            // Generate the file path relative to the parent folder
+            let relative_path = if file_path.starts_with(parent.to_string_lossy().as_ref()) {
+                &file_path[parent.to_string_lossy().len() + 1..]
+            } else {
+                file_path
+            };
+
+            // Create the normalized relative path for comparison
+            let normalized_relative_path = relative_path.replace('\\', "/");
+            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+
+            // Remove all lines that export this file
+            let mut lines_to_keep = Vec::new();
+            let mut found_export = false;
+
+            for line in contents.lines() {
+                // Check if this line exports our file
+                if line.contains(&normalized_relative_path)
+                    || (line.contains(file_name) && line.contains("export"))
+                {
+                    found_export = true;
+                    continue; // Skip this line (remove it)
+                }
+                lines_to_keep.push(line);
+            }
+
+            if found_export {
+                // Write the updated content back
+                let updated_content = lines_to_keep.join("\n");
+                fs::write(&index_path, updated_content)?;
+                println!("Updated index.ts");
+            }
+        }
+    }
+
+    Ok(())
 }

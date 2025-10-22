@@ -1,5 +1,5 @@
 use crate::{
-    app_state::{App, AppFocus},
+    app_state::{App, AppConfig, AppFocus},
     views::main::{render_main_view, render_sidebar},
 };
 use crossterm::{
@@ -11,14 +11,14 @@ use ratatui::{Frame, Terminal, backend::CrosstermBackend, layout::Constraint};
 use std::io;
 use tui_textarea::{Input, Key};
 
-pub async fn run() -> Result<(), anyhow::Error> {
+pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new();
+    let mut app = App::new(config);
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
@@ -54,10 +54,15 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Max(37), Constraint::Min(0)])
         .split(area);
 
+    // Pages
     render_sidebar(f, layout[0], app);
     render_main_view(f, layout[1], app);
 
-    if app.app_focus == AppFocus::AddPopup {
-        crate::views::add_popup::render_add_popup(f, app);
+    // Modals
+
+    match app.app_focus {
+        AppFocus::AddPopup => crate::views::add_popup::render_add_popup(f, app),
+        AppFocus::DeletePopup => crate::views::delete_popup::render_delete_popup(f, app),
+        _ => {}
     }
 }
