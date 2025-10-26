@@ -540,10 +540,10 @@ async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
             if let Err(e) = fs::remove_file(&full_path) {
                 eprintln!("Failed to delete {}: {}", full_path.display(), e);
             } else {
-                println!("Deleted: {}", full_path.display());
+                eprintln!("Deleted: {}", full_path.display());
             }
         } else {
-            println!("File not found: {}", full_path.display());
+            eprintln!("File not found: {}", full_path.display());
         }
 
         // Remove the export line from index.ts content
@@ -579,7 +579,6 @@ async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
     // Write the updated index.ts
     fs::write(&index_ts_path, updated_index_content)?;
-    println!("Updated index.ts");
 
     Ok(())
 }

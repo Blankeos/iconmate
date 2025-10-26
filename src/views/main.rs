@@ -4,54 +4,121 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
-use tui_textarea::{Input, Key};
+use tui_textarea::{Input, Key, TextArea};
 
-use crate::app_state::{App, AppFocus};
-impl App {
-    pub fn handlekeys_main(&mut self, input: Input) {
-        match self.app_focus {
-            AppFocus::Search => {} // Dirty, but uh it's fine
-            _ => self.handlekeys_normal(input),
+use crate::{
+    app_state::{App, AppFocus},
+    utils::IconEntry,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MainStateFocus {
+    Normal,
+    Search,
+}
+
+#[derive(Debug)]
+pub struct MainState {
+    pub main_state_focus: MainStateFocus,
+    pub search_items_value: String,
+
+    pub search_textarea: TextArea<'static>,
+}
+
+impl MainState {
+    pub fn new() -> Self {
+        Self {
+            main_state_focus: MainStateFocus::Normal,
+            search_items_value: String::new(),
+            search_textarea: TextArea::default(),
         }
     }
 
-    fn handlekeys_normal(&mut self, input: Input) {
+    pub fn handlekeys_search(&mut self, input: &Input, app: &mut App) {
         match input.key {
-            Key::Char('q') => self.should_quit = true,
+            Key::Esc => {
+                self.main_state_focus = MainStateFocus::Normal;
+                app.app_focus = AppFocus::Main;
+                self.search_textarea = TextArea::default();
+                self.search_items_value = String::from("");
+            }
+            Key::Enter => {
+                app.app_focus = AppFocus::Main;
+                self.main_state_focus = MainStateFocus::Normal;
+            }
+            _ => {
+                self.search_textarea.input(input.clone());
+                self.search_items_value = self.search_textarea.lines().join("");
+                self.update_filtered_items(app);
+            }
+        }
+    }
+
+    fn handlekeys_normal(&mut self, input: &Input, app: &mut App) {
+        match input.key {
+            Key::Char('q') => app.should_quit = true,
             Key::Char('a') => {
-                self.init_add_popup();
+                app.init_add_popup();
             }
             Key::Char('d') => {
-                self.init_delete_popup();
+                app.init_delete_popup();
             }
             Key::Char('/') => {
-                self.app_focus = AppFocus::Search;
+                self.main_state_focus = MainStateFocus::Search;
             }
             Key::Up | Key::Char('k') => {
-                let item_count = if !self.filtered_items.is_empty() {
-                    self.filtered_items.len()
+                let item_count = if !app.filtered_items.is_empty() {
+                    app.filtered_items.len()
                 } else {
-                    self.items.len()
+                    app.items.len()
                 };
-                if self.selected_index > 0 {
-                    self.selected_index -= 1;
+                if app.selected_index > 0 {
+                    app.selected_index -= 1;
                 } else {
-                    self.selected_index = item_count.saturating_sub(1);
+                    app.selected_index = item_count.saturating_sub(1);
                 }
             }
             Key::Down | Key::Char('j') => {
-                let item_count = if !self.filtered_items.is_empty() {
-                    self.filtered_items.len()
+                let item_count = if !app.filtered_items.is_empty() {
+                    app.filtered_items.len()
                 } else {
-                    self.items.len()
+                    app.items.len()
                 };
-                if self.selected_index < item_count.saturating_sub(1) {
-                    self.selected_index += 1;
+                if app.selected_index < item_count.saturating_sub(1) {
+                    app.selected_index += 1;
                 } else {
-                    self.selected_index = 0;
+                    app.selected_index = 0;
                 }
             }
             _ => {}
+        }
+    }
+    pub fn update_filtered_items(&mut self, app: &mut App) {
+        let filter = self.search_items_value.to_lowercase();
+        app.filtered_items = app
+            .items
+            .iter()
+            .filter(|entry| {
+                let case1 = entry.name.to_lowercase().contains(&filter);
+                let case2 = entry.file_path.contains(&filter);
+
+                case1 || case2
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+impl App {
+    pub fn handlekeys_main(&mut self, input: Input) {
+        let main_state_ptr = &mut self.main_state as *mut MainState; // Replace MainState with your actual type
+        match self.main_state.main_state_focus {
+            MainStateFocus::Search => {
+                unsafe { (*main_state_ptr).handlekeys_search(&input, self) };
+            }
+            MainStateFocus::Normal => {
+                unsafe { (*main_state_ptr).handlekeys_normal(&input, self) };
+            }
         }
     }
 }
@@ -90,11 +157,11 @@ pub fn render_sidebar(f: &mut Frame, area: Rect, _app: &App) {
 
     let vertical_layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(2)
+        .margin(0)
         .constraints([
             Constraint::Length(3),
-            Constraint::Min(10),
-            Constraint::Max(10),
+            Constraint::Min(8),
+            Constraint::Length(7),
         ])
         .split(area);
 
@@ -109,6 +176,9 @@ pub fn render_sidebar(f: &mut Frame, area: Rect, _app: &App) {
 pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::widgets::{Cell, Row, Table};
 
+    let main_state = &app.main_state;
+    let is_searching = main_state.main_state_focus == MainStateFocus::Search;
+
     let header_cells = ["Name", "File"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
@@ -121,28 +191,39 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         .constraints([Constraint::Length(1), Constraint::Min(0)])
         .split(area);
 
-    let search_display = if app.search_items_value.is_empty() && app.app_focus != AppFocus::Search {
-        String::new()
+    if is_searching {
+        let chunks = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Length(11),
+                Constraint::Fill(1),
+                Constraint::Min(0),
+            ])
+            .split(main_chunks[0]);
+        let search_label = Paragraph::new("🔍 Search:")
+            .style(Style::default().fg(Color::White))
+            .alignment(Alignment::Left);
+        let search_enter_paragraph = Paragraph::new("[Enter]")
+            .style(Style::default().fg(Color::Green))
+            .alignment(Alignment::Right);
+        f.render_widget(search_label, chunks[0]);
+        f.render_widget(&main_state.search_textarea, chunks[1]);
+        f.render_widget(search_enter_paragraph, chunks[2]);
     } else {
-        let prefix = if app.app_focus == AppFocus::Search {
-            "🔍 Search: "
+        let search_display = if main_state.search_items_value.is_empty() {
+            String::new()
         } else {
-            "🔍 "
+            format!("🔍 {}", main_state.search_items_value)
         };
-        format!("{}{}", prefix, app.search_items_value)
-    };
-    let mut search_style = Style::default().fg(Color::White);
-    if app.app_focus == AppFocus::Search {
-        search_style = search_style.bg(Color::DarkGray);
+        let search_paragraph = Paragraph::new(search_display.as_str())
+            .style(Style::default().fg(Color::White))
+            .alignment(Alignment::Left);
+        f.render_widget(search_paragraph, main_chunks[0]);
     }
-    let search_paragraph = Paragraph::new(search_display.as_str())
-        .style(search_style)
-        .alignment(Alignment::Left);
-    f.render_widget(search_paragraph, main_chunks[0]);
 
-    let item_list = if app.filtered_items.is_empty() && !app.search_items_value.is_empty() {
+    let item_list = if app.filtered_items.is_empty() && !main_state.search_items_value.is_empty() {
         &app.filtered_items
-    } else if app.search_items_value.is_empty() {
+    } else if main_state.search_items_value.is_empty() {
         &app.items
     } else {
         &app.filtered_items

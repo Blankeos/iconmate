@@ -9,6 +9,15 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 use tui_textarea::{Input, Key, TextArea};
 
+// Constants
+const FOLDER_FIELD_IDX: usize = 0;
+const PRESET_FIELD_IDX: usize = 1;
+const ICON_FIELD_IDX: usize = 2;
+const FILENAME_FIELD_IDX: usize = 3;
+const NAME_FIELD_IDX: usize = 4;
+const HELP_FIELD_IDX: usize = 5;
+const DEBUG_FIELD_IDX: usize = 6;
+
 #[derive(Debug)]
 pub struct AddPopupState {
     // Saved values
@@ -164,7 +173,7 @@ impl App {
         });
 
         // Set default value for folder input
-        self.add_popup_state.as_mut().unwrap().inputs[0].insert_str("src/assets/icons");
+        self.add_popup_state.as_mut().unwrap().inputs[0].insert_str(&self.config.folder);
         self.add_popup_state.as_mut().unwrap().sync_cursor(0);
     }
 
@@ -173,8 +182,8 @@ impl App {
             let _input = input.clone();
 
             match state.current_input {
-                1 => state.handlekeys_preset_input(_input),
-                2 => state.handlekeys_text_area(_input),
+                PRESET_FIELD_IDX => state.handlekeys_preset_input(_input),
+                ICON_FIELD_IDX => state.handlekeys_text_area(_input),
                 _ => state.handlekeys_text_input(_input),
             }
 
@@ -197,14 +206,13 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         .direction(ratatui::layout::Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Length(3),  // Title
-            Constraint::Length(3),  // Folder
-            Constraint::Length(7),  // Preset
-            Constraint::Length(5),  // Icon
-            Constraint::Length(3),  // Filename
-            Constraint::Length(3),  // Name
-            Constraint::Min(0),     // Help text
-            Constraint::Length(20), //
+            Constraint::Length(3), // Folder
+            Constraint::Length(7), // Preset
+            Constraint::Length(5), // Icon
+            Constraint::Length(3), // Filename
+            Constraint::Length(3), // Name
+            Constraint::Min(0),    // Help text
+            Constraint::Length(5), // Debug
         ])
         .split(area);
 
@@ -238,20 +246,20 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         let debug_paragraph = Paragraph::new(debug_text)
             .block(debug_block)
             .style(Style::default().fg(Color::DarkGray));
-        f.render_widget(debug_paragraph, layout[7]);
+        f.render_widget(debug_paragraph, layout[DEBUG_FIELD_IDX]);
 
         // Render each field individually with textarea
         let folder_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(if state.current_input == 0 {
+            .border_style(if state.current_input == FOLDER_FIELD_IDX {
                 Style::default().fg(Color::Yellow)
             } else {
                 Style::default()
             })
-            .title(labels[0].clone());
-        state.inputs[0].set_block(folder_block);
-        state.inputs[0].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[0], layout[1]);
+            .title(labels[FOLDER_FIELD_IDX].clone());
+        state.inputs[FOLDER_FIELD_IDX].set_block(folder_block);
+        state.inputs[FOLDER_FIELD_IDX].set_cursor_line_style(Style::default());
+        f.render_widget(&state.inputs[FOLDER_FIELD_IDX], layout[FOLDER_FIELD_IDX]);
 
         // Create a selectable list for preset
         let mut state_store = ratatui::widgets::ListState::default();
@@ -282,29 +290,29 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(labels[1].clone())
-                    .border_style(if state.current_input == 1 {
+                    .border_style(if state.current_input == PRESET_FIELD_IDX {
                         Style::default().fg(Color::Yellow)
                     } else {
                         Style::default()
                     }),
             )
             .highlight_symbol("→ ");
-        if state.current_input == 1 {
+        if state.current_input == PRESET_FIELD_IDX {
             list = list.highlight_style(Style::default().bg(Color::DarkGray))
         }
 
-        f.render_stateful_widget(list, layout[2], &mut state_store);
+        f.render_stateful_widget(list, layout[PRESET_FIELD_IDX], &mut state_store);
 
         let icon_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(if state.current_input == 2 {
+            .border_style(if state.current_input == ICON_FIELD_IDX {
                 Style::default().fg(Color::Green)
             } else {
                 Style::default()
             })
-            .title(labels[2].clone())
+            .title(labels[ICON_FIELD_IDX].clone())
             .title_bottom(
-                Line::from(if state.current_input == 2 {
+                Line::from(if state.current_input == ICON_FIELD_IDX {
                     "Tab to continue"
                 } else {
                     ""
@@ -312,7 +320,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                 .alignment(Alignment::Right),
             )
             .title_bottom(
-                Line::from(if state.current_input == 2 {
+                Line::from(if state.current_input == ICON_FIELD_IDX {
                     "ctrl+v to paste"
                 } else {
                     ""
@@ -321,36 +329,39 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             );
         state.inputs[2].set_block(icon_block);
         state.inputs[2].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[2], layout[3]);
+        f.render_widget(&state.inputs[ICON_FIELD_IDX], layout[ICON_FIELD_IDX]);
 
         let filename_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(if state.current_input == 3 {
+            .border_style(if state.current_input == FILENAME_FIELD_IDX {
                 Style::default().fg(Color::Yellow)
             } else {
                 Style::default()
             })
-            .title(labels[3].clone())
+            .title(labels[FILENAME_FIELD_IDX].clone())
             .title(
                 Line::from(crate::utils::filename_from_preset(
-                    Some(state.inputs[3].lines().join("")),
+                    Some(state.inputs[FILENAME_FIELD_IDX].lines().join("")),
                     state.preset.clone(),
                 ))
                 .alignment(Alignment::Right),
             );
-        state.inputs[3].set_block(filename_block);
-        state.inputs[3].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[3], layout[4]);
+        state.inputs[FILENAME_FIELD_IDX].set_block(filename_block);
+        state.inputs[FILENAME_FIELD_IDX].set_cursor_line_style(Style::default());
+        f.render_widget(
+            &state.inputs[FILENAME_FIELD_IDX],
+            layout[FILENAME_FIELD_IDX],
+        );
 
-        let name_value = state.inputs[4].lines().join("");
+        let name_value = state.inputs[NAME_FIELD_IDX].lines().join("");
         let name_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(if state.current_input == 4 {
+            .border_style(if state.current_input == NAME_FIELD_IDX {
                 Style::default().fg(Color::Yellow)
             } else {
                 Style::default()
             })
-            .title(format!("{}", labels[4]))
+            .title(format!("{}", labels[NAME_FIELD_IDX]))
             .title(
                 Line::from(if name_value.is_empty() {
                     String::from("usage: <Icon{} />")
@@ -359,13 +370,13 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                 })
                 .alignment(Alignment::Right),
             );
-        state.inputs[4].set_block(name_block);
-        state.inputs[4].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[4], layout[5]);
+        state.inputs[NAME_FIELD_IDX].set_block(name_block);
+        state.inputs[NAME_FIELD_IDX].set_cursor_line_style(Style::default());
+        f.render_widget(&state.inputs[NAME_FIELD_IDX], layout[NAME_FIELD_IDX]);
     }
 
     let help_text = Paragraph::new("Tab/Enter to Continue | ESC to cancel")
         .alignment(Alignment::Center)
         .style(Style::default().fg(Color::Gray));
-    f.render_widget(help_text, layout[6]);
+    f.render_widget(help_text, layout[HELP_FIELD_IDX]);
 }

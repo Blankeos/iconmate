@@ -1,4 +1,4 @@
-use crate::utils::IconEntry;
+use crate::{utils::IconEntry, views::main::MainState};
 use crossterm::event::KeyEvent;
 use std::sync::mpsc::Receiver;
 use tui_textarea::{Input, Key};
@@ -9,7 +9,6 @@ pub enum AppFocus {
     AddPopup,
     DeletePopup,
     HelpPopup,
-    Search,
 }
 
 #[derive(Debug, Clone)]
@@ -27,14 +26,16 @@ pub struct App {
 
     pub should_quit: bool,
 
-    // Main State (actually.. could move it there too)
     pub selected_index: usize,
-    pub search_items_value: String,
+
     pub items: Vec<IconEntry>,
+
     pub filtered_items: Vec<IconEntry>,
+
     pub app_focus: AppFocus,
 
     // Deeper states
+    pub main_state: crate::views::main::MainState,
     pub add_popup_state: Option<crate::views::add_popup::AddPopupState>,
     pub delete_popup_state: Option<crate::views::delete_popup::DeletePopupState>,
 }
@@ -49,13 +50,13 @@ impl App {
             rx: rx,
 
             selected_index: 0,
-            search_items_value: String::from(""),
             filtered_items: Vec::new(),
             items: Vec::new(),
 
             app_focus: AppFocus::Main,
             add_popup_state: None,
             delete_popup_state: None,
+            main_state: MainState::new(),
         };
 
         app.init_icons();
@@ -79,40 +80,8 @@ impl App {
             AppFocus::AddPopup => self.handlekeys_add_popup(key),
             AppFocus::DeletePopup => self.handlekeys_delete_popup(key),
             AppFocus::HelpPopup => self.handlekeys_help_popup(key),
-            AppFocus::Search => self.handlekeys_search(key),
         }
     }
 
     fn handlekeys_help_popup(&mut self, _key: Input) {}
-
-    fn handlekeys_search(&mut self, input: Input) {
-        match input.key {
-            Key::Esc => {
-                self.app_focus = AppFocus::Main;
-                self.search_items_value.clear();
-            }
-            Key::Char(c) => {
-                self.search_items_value.push(c);
-                self.update_filtered_items();
-            }
-            Key::Backspace => {
-                self.search_items_value.pop();
-                self.update_filtered_items();
-            }
-            Key::Enter => {
-                self.app_focus = AppFocus::Main;
-            }
-            _ => {}
-        }
-    }
-
-    fn update_filtered_items(&mut self) {
-        let filter = self.search_items_value.to_lowercase();
-        self.filtered_items = self
-            .items
-            .iter()
-            .filter(|entry| entry.name.to_lowercase().contains(&filter))
-            .cloned()
-            .collect()
-    }
 }

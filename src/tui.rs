@@ -47,11 +47,24 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
 
 fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
+    let width = area.width;
+
+    let (direction, constraints) = if width < 80 {
+        (
+            ratatui::layout::Direction::Vertical,
+            vec![Constraint::Min(3), Constraint::Min(0)],
+        )
+    } else {
+        (
+            ratatui::layout::Direction::Horizontal,
+            vec![Constraint::Max(37), Constraint::Min(0)],
+        )
+    };
 
     let layout = ratatui::layout::Layout::default()
-        .direction(ratatui::layout::Direction::Horizontal)
+        .direction(direction)
         .margin(1)
-        .constraints([Constraint::Max(37), Constraint::Min(0)])
+        .constraints(constraints)
         .split(area);
 
     // Pages

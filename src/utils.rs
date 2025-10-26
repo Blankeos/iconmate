@@ -326,9 +326,9 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
     // Delete the icon file
     if path.exists() {
         fs::remove_file(path)?;
-        println!("Deleted icon file: {}", path.display());
+        // eprintln!("Deleted icon file: {}", path.display());
     } else {
-        eprintln!("Icon file not found: {}", path.display());
+        // eprintln!("Icon file not found: {}", path.display());
         return Ok(());
     }
 
@@ -370,7 +370,7 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
                 // Write the updated content back
                 let updated_content = lines_to_keep.join("\n");
                 fs::write(&index_path, updated_content)?;
-                println!("Updated index.ts");
+                // println!("Updated index.ts");
             }
         }
     }
