@@ -3,23 +3,43 @@
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { install } = require("./install");
 
 const binaryName = process.platform === "win32" ? "iconmate.exe" : "iconmate";
 const binaryPath = path.join(__dirname, "bin", binaryName);
 
-if (!fs.existsSync(binaryPath)) {
-  console.error("❌ iconmate binary not found. Please reinstall:");
-  console.error("npm uninstall -g iconmate && npm install -g iconmate");
-  process.exit(1);
+async function ensureBinary() {
+  if (fs.existsSync(binaryPath)) {
+    return;
+  }
+
+  console.error("iconmate binary not found. Attempting download...");
+
+  try {
+    await install();
+  } catch (error) {
+    process.exit(1);
+  }
+
+  if (!fs.existsSync(binaryPath)) {
+    console.error("❌ iconmate binary still missing after download.");
+    process.exit(1);
+  }
 }
 
-const child = spawn(binaryPath, process.argv.slice(2), { stdio: "inherit" });
+async function run() {
+  await ensureBinary();
 
-child.on("error", (err) => {
-  console.error("❌ Failed to start iconmate:", err.message);
-  process.exit(1);
-});
+  const child = spawn(binaryPath, process.argv.slice(2), { stdio: "inherit" });
 
-child.on("exit", (code, signal) => {
-  process.exit(signal ? 1 : code || 0);
-});
+  child.on("error", (err) => {
+    console.error("❌ Failed to start iconmate:", err.message);
+    process.exit(1);
+  });
+
+  child.on("exit", (code, signal) => {
+    process.exit(signal ? 1 : code || 0);
+  });
+}
+
+run();
