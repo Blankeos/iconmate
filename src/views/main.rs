@@ -1,15 +1,12 @@
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Rect},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Paragraph},
+    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 
-use crate::{
-    app_state::{App, AppFocus},
-    utils::IconEntry,
-};
+use crate::app_state::{App, AppFocus};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MainStateFocus {
@@ -65,6 +62,9 @@ impl MainState {
             }
             Key::Char('/') => {
                 self.main_state_focus = MainStateFocus::Search;
+            }
+            Key::Char('?') => {
+                app.init_help_popup();
             }
             Key::Up | Key::Char('k') => {
                 let item_count = if !app.filtered_items.is_empty() {
@@ -123,56 +123,6 @@ impl App {
     }
 }
 
-pub fn render_sidebar(f: &mut Frame, area: Rect, _app: &App) {
-    let ascii_art = "░▀█▀░█▀▀░█▀█░█▀█░█▄█░█▀█░▀█▀░█▀▀░\n\
-         ░░█░░█░░░█░█░█░█░█░█░█▀█░░█░░█▀▀░\n\
-         ░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀░▀░░▀░░▀▀▀░";
-    let items: Vec<ListItem> = vec![
-        ListItem::new("a  - Add"),
-        ListItem::new("d  - Delete"),
-        ListItem::new("↑↓ - Navigate (or k,j)"),
-        ListItem::new("?  - Help"),
-        ListItem::new("/  - Search"),
-        ListItem::new("q  - Quit"),
-    ];
-    let list = List::new(items).highlight_symbol("→ ");
-    let list_block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(ratatui::widgets::BorderType::Rounded);
-
-    let inner_block = Block::default()
-        .title("Defaults")
-        .borders(Borders::ALL)
-        .border_type(ratatui::widgets::BorderType::Rounded);
-    let inner_list = List::new(vec![
-        ListItem::new("Folder"),
-        ListItem::new(_app.config.folder.as_str()),
-        ListItem::new(""),
-        ListItem::new("Preset"),
-        ListItem::new(match &_app.config.preset {
-            Some(p) => p.as_str(),
-            None => "<none>",
-        }),
-    ]);
-
-    let vertical_layout = ratatui::layout::Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .margin(0)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(8),
-            Constraint::Length(7),
-        ])
-        .split(area);
-
-    let ascii_paragraph = Paragraph::new(ascii_art)
-        .style(Style::default().fg(Color::Rgb(74, 222, 128)))
-        .alignment(Alignment::Center);
-    f.render_widget(ascii_paragraph, vertical_layout[0]);
-    f.render_widget(list.block(list_block), vertical_layout[1]);
-    f.render_widget(inner_list.block(inner_block), vertical_layout[2]);
-}
-
 pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
     use ratatui::widgets::{Cell, Row, Table};
 
@@ -188,8 +138,29 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
 
     let main_chunks = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
         .split(area);
+
+    let ascii_art = "░▀█▀░█▀▀░█▀█░█▀█░█▄█░█▀█░▀█▀░█▀▀░\n\
+         ░░█░░█░░░█░█░█░█░█░█░█▀█░░█░░█▀▀░\n\
+         ░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀░▀░░▀░░▀▀▀░";
+    let ascii_paragraph = Paragraph::new(ascii_art)
+        .style(Style::default().fg(Color::Rgb(74, 222, 128)))
+        .alignment(Alignment::Center);
+    f.render_widget(ascii_paragraph, main_chunks[0]);
+
+    let tagline = "Add svg icons to your js apps without any dependencies";
+    let tagline_paragraph = Paragraph::new(tagline)
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center);
+    f.render_widget(tagline_paragraph, main_chunks[1]);
 
     if is_searching {
         let chunks = ratatui::layout::Layout::default()
@@ -199,7 +170,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
                 Constraint::Fill(1),
                 Constraint::Min(0),
             ])
-            .split(main_chunks[0]);
+            .split(main_chunks[3]);
         let search_label = Paragraph::new("🔍 Search:")
             .style(Style::default().fg(Color::White))
             .alignment(Alignment::Left);
@@ -218,7 +189,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         let search_paragraph = Paragraph::new(search_display.as_str())
             .style(Style::default().fg(Color::White))
             .alignment(Alignment::Left);
-        f.render_widget(search_paragraph, main_chunks[0]);
+        f.render_widget(search_paragraph, main_chunks[3]);
     }
 
     let item_list = if app.filtered_items.is_empty() && !main_state.search_items_value.is_empty() {
@@ -252,5 +223,23 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
 
     let mut state = ratatui::widgets::TableState::default();
     state.select(Some(app.selected_index));
-    f.render_stateful_widget(table, main_chunks[1], &mut state);
+    f.render_stateful_widget(table, main_chunks[4], &mut state);
+
+    let instructions = "a Add | d Delete | / Search | ? Help | q Quit | Up/Down (j/k)";
+    let version_label = format!("iconmate v{}", env!("CARGO_PKG_VERSION"));
+    let footer_layout = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(version_label.chars().count() as u16 + 1),
+        ])
+        .split(main_chunks[5]);
+    let instructions_paragraph = Paragraph::new(instructions)
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Left);
+    let version_paragraph = Paragraph::new(version_label)
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Right);
+    f.render_widget(instructions_paragraph, footer_layout[0]);
+    f.render_widget(version_paragraph, footer_layout[1]);
 }

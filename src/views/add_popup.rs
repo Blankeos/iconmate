@@ -10,18 +10,18 @@ use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 use tui_textarea::{Input, Key, TextArea};
 
 // Constants
-const FOLDER_FIELD_IDX: usize = 0;
-const PRESET_FIELD_IDX: usize = 1;
-const ICON_FIELD_IDX: usize = 2;
-const FILENAME_FIELD_IDX: usize = 3;
-const NAME_FIELD_IDX: usize = 4;
-const HELP_FIELD_IDX: usize = 5;
-const DEBUG_FIELD_IDX: usize = 6;
+// const FOLDER_FIELD_IDX: usize = 0;
+const PRESET_FIELD_IDX: usize = 0;
+const ICON_FIELD_IDX: usize = 1;
+const FILENAME_FIELD_IDX: usize = 2;
+const NAME_FIELD_IDX: usize = 3;
+const HELP_FIELD_IDX: usize = 4;
+const DEBUG_FIELD_IDX: usize = 5;
 
 #[derive(Debug)]
 pub struct AddPopupState {
     // Saved values
-    folder: Option<String>,
+    // folder: Option<String>,
     preset: Option<Preset>,
     icon: Option<String>,
     filename: Option<String>,
@@ -49,7 +49,7 @@ impl AddPopupState {
     }
 
     pub fn handlekeys_preset_input(&mut self, input: Input) {
-        if self.current_input == 1 {
+        if self.current_input == PRESET_FIELD_IDX {
             match input.key {
                 Key::Tab | Key::Enter => {
                     // Save the selected preset
@@ -85,9 +85,9 @@ impl AddPopupState {
                     self.preset_index = new_index;
                 }
                 _ => {
-                    if self.current_input == 1 {
-                        self.inputs[1].input(input);
-                        self.preset_filter = self.inputs[1].lines().join("\n");
+                    if self.current_input == PRESET_FIELD_IDX {
+                        self.inputs[PRESET_FIELD_IDX].input(input);
+                        self.preset_filter = self.inputs[PRESET_FIELD_IDX].lines().join("\n");
 
                         self.presets_filtered = PRESETS_OPTIONS
                             .iter()
@@ -110,7 +110,7 @@ impl AddPopupState {
         match input.key {
             Key::Tab => {
                 // Save the icon value
-                self.icon = Some(self.inputs[2].lines().join("\n"));
+                self.icon = Some(self.inputs[ICON_FIELD_IDX].lines().join("\n"));
                 self.current_input = (self.current_input + 1) % self.inputs.len();
                 self.sync_cursor(self.current_input);
             }
@@ -134,9 +134,9 @@ impl AddPopupState {
                 // Save the current input value before moving to next
                 let value = self.inputs[self.current_input].lines().join("");
                 match self.current_input {
-                    0 => self.folder = Some(value),   // folder
-                    3 => self.filename = Some(value), // filename
-                    4 => self.name = Some(value),     // name
+                    // 0 => self.folder = Some(value),                    // folder
+                    FILENAME_FIELD_IDX => self.filename = Some(value), // filename
+                    NAME_FIELD_IDX => self.name = Some(value),         // name
                     _ => {}
                 }
                 self.current_input = (self.current_input + 1) % self.inputs.len();
@@ -153,7 +153,7 @@ impl App {
     pub fn init_add_popup(&mut self) {
         self.app_focus = AppFocus::AddPopup;
         self.add_popup_state = Some(AddPopupState {
-            folder: None,
+            // folder: None,
             icon: None,
             name: None,
             preset: None,
@@ -162,6 +162,7 @@ impl App {
             preset_index: 0,
             preset_filter: String::new(),
             inputs: vec![
+                // TextArea::default(), // folder
                 TextArea::default(), // folder
                 TextArea::default(), // preset (not used)
                 TextArea::default(), // icon
@@ -172,9 +173,12 @@ impl App {
             current_input: 0,
         });
 
-        // Set default value for folder input
-        self.add_popup_state.as_mut().unwrap().inputs[0].insert_str(&self.config.folder);
-        self.add_popup_state.as_mut().unwrap().sync_cursor(0);
+        // Unused: Set default value for folder input
+        // Unused: self.add_popup_state.as_mut().unwrap().inputs[0].insert_str(&self.config.folder);
+        self.add_popup_state
+            .as_mut()
+            .unwrap()
+            .sync_cursor(PRESET_FIELD_IDX); // The first.
     }
 
     pub fn handlekeys_add_popup(&mut self, input: Input) {
@@ -206,7 +210,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         .direction(ratatui::layout::Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Length(3), // Folder
+            // Constraint::Length(3), // Folder
             Constraint::Length(7), // Preset
             Constraint::Length(5), // Icon
             Constraint::Length(3), // Filename
@@ -217,13 +221,15 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         .split(area);
 
     let title = Block::bordered()
-        .title("Add Icon")
-        .border_type(ratatui::widgets::BorderType::Rounded);
+        .title("󱐱 Add Icon")
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .title_style(Style::default().fg(Color::White))
+        .title_alignment(Alignment::Center);
     f.render_widget(title, area);
 
     if let Some(state) = &mut app.add_popup_state {
         let labels: Vec<String> = vec![
-            String::from(" Folder"),
+            // String::from(" Folder"),
             if state.preset_filter.is_empty() {
                 format!(" Preset")
             } else {
@@ -236,8 +242,12 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
 
         // Debug block - shows all saved values for development
         let debug_text = format!(
-            "folder: {:?}\npreset: {:?}\nicon: {:?}\nfilename: {:?}\nname: {:?}",
-            state.folder, state.preset, state.icon, state.filename, state.name
+            "preset: {:?}\nicon: {:?}\nfilename: {:?}\nname: {:?}",
+            // state.folder,
+            state.preset,
+            state.icon,
+            state.filename,
+            state.name
         );
         let debug_block = Block::default()
             .borders(Borders::ALL)
@@ -249,17 +259,17 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         f.render_widget(debug_paragraph, layout[DEBUG_FIELD_IDX]);
 
         // Render each field individually with textarea
-        let folder_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(if state.current_input == FOLDER_FIELD_IDX {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
-            })
-            .title(labels[FOLDER_FIELD_IDX].clone());
-        state.inputs[FOLDER_FIELD_IDX].set_block(folder_block);
-        state.inputs[FOLDER_FIELD_IDX].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[FOLDER_FIELD_IDX], layout[FOLDER_FIELD_IDX]);
+        // let folder_block = Block::default()
+        //     .borders(Borders::ALL)
+        //     .border_style(if state.current_input == FOLDER_FIELD_IDX {
+        //         Style::default().fg(Color::Yellow)
+        //     } else {
+        //         Style::default()
+        //     })
+        //     .title(labels[FOLDER_FIELD_IDX].clone());
+        // state.inputs[FOLDER_FIELD_IDX].set_block(folder_block);
+        // state.inputs[FOLDER_FIELD_IDX].set_cursor_line_style(Style::default());
+        // f.render_widget(&state.inputs[FOLDER_FIELD_IDX], layout[FOLDER_FIELD_IDX]);
 
         // Create a selectable list for preset
         let mut state_store = ratatui::widgets::ListState::default();
@@ -289,7 +299,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(labels[1].clone())
+                    .title(labels[PRESET_FIELD_IDX].clone())
                     .border_style(if state.current_input == PRESET_FIELD_IDX {
                         Style::default().fg(Color::Yellow)
                     } else {
@@ -327,8 +337,8 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                 })
                 .alignment(Alignment::Left),
             );
-        state.inputs[2].set_block(icon_block);
-        state.inputs[2].set_cursor_line_style(Style::default());
+        state.inputs[ICON_FIELD_IDX].set_block(icon_block);
+        state.inputs[ICON_FIELD_IDX].set_cursor_line_style(Style::default());
         f.render_widget(&state.inputs[ICON_FIELD_IDX], layout[ICON_FIELD_IDX]);
 
         let filename_block = Block::default()

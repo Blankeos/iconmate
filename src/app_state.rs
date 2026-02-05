@@ -1,7 +1,6 @@
 use crate::{utils::IconEntry, views::main::MainState};
-use crossterm::event::KeyEvent;
 use std::sync::mpsc::Receiver;
-use tui_textarea::{Input, Key};
+use tui_textarea::Input;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppFocus {
@@ -82,6 +81,4 @@ impl App {
             AppFocus::HelpPopup => self.handlekeys_help_popup(key),
         }
     }
-
-    fn handlekeys_help_popup(&mut self, _key: Input) {}
 }

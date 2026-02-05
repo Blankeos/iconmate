@@ -1,6 +1,6 @@
 use crate::{
     app_state::{App, AppConfig, AppFocus},
-    views::main::{render_main_view, render_sidebar},
+    views::main::render_main_view,
 };
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
@@ -27,6 +27,11 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
             Input {
                 key: Key::Char('q'),
                 ..
+            }
+            | Input {
+                key: Key::Char('c'),
+                ctrl: true,
+                ..
             } => break,
             input => app.handlekeys(input),
         }
@@ -47,35 +52,21 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
 
 fn ui(f: &mut Frame, app: &mut App) {
     let area = f.area();
-    let width = area.width;
-
-    let (direction, constraints) = if width < 80 {
-        (
-            ratatui::layout::Direction::Vertical,
-            vec![Constraint::Min(3), Constraint::Min(0)],
-        )
-    } else {
-        (
-            ratatui::layout::Direction::Horizontal,
-            vec![Constraint::Max(37), Constraint::Min(0)],
-        )
-    };
-
     let layout = ratatui::layout::Layout::default()
-        .direction(direction)
+        .direction(ratatui::layout::Direction::Vertical)
         .margin(1)
-        .constraints(constraints)
+        .constraints([Constraint::Min(0)])
         .split(area);
 
     // Pages
-    render_sidebar(f, layout[0], app);
-    render_main_view(f, layout[1], app);
+    render_main_view(f, layout[0], app);
 
     // Modals
 
     match app.app_focus {
         AppFocus::AddPopup => crate::views::add_popup::render_add_popup(f, app),
         AppFocus::DeletePopup => crate::views::delete_popup::render_delete_popup(f, app),
+        AppFocus::HelpPopup => crate::views::help_popup::render_help_popup(f, app),
         _ => {}
     }
 }

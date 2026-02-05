@@ -1,7 +1,7 @@
 use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
 use ratatui::Frame;
-use ratatui::layout::Constraint;
+use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, ListItem};
 use tui_textarea::{Input, Key};
@@ -107,9 +107,10 @@ pub fn render_delete_popup(f: &mut Frame, app: &mut App) {
         .split(area);
 
     let title = Block::bordered()
-        .title(format!("🗑 Delete Icon"))
+        .title(format!("󰗨 Delete Icon"))
         .title_style(Style::default().fg(Color::White))
-        .border_type(ratatui::widgets::BorderType::Rounded);
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .title_alignment(Alignment::Center);
     f.render_widget(title, area);
 
     if let Some(state) = &mut app.delete_popup_state {
