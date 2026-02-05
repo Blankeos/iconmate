@@ -1,0 +1,20 @@
+- [ ] Enter to submit during add.
+- [ ] Allow cmd+v to paste (not just as a stream of characters)
+- [x] ~Help popup: status instead of (defaults)~
+- [ ] Default names from iconify urls and names
+- [ ] iconify urls, iconesjs urls, make sure to parse them all.
+- [x] Homepage: press up and down even during search. Maintain focus as well.
+- [ ] Improve the look of the add, make it less lines and borders. Too noisy. (Inspire from crabcode). Like less lines.
+- [ ] Delete popup - make it less noisy (inspire from crabcode), But keep the easy `y` or `n`. I think the instructions are what make it noisy. j and k? Just make it assumed. But less lines as well.
+- [ ] Rename popup - renames the file name, but not the icon. Just recommend that the user can rename it via the editor. Using `cd` refactor via the lsp or something. That's much faster.
+- [ ] Guess what, we need iconmate.jsonc.
+- [ ] global system prefs `~/.config/iconmate.jsonc` or `~/iconmate.jsonc`
+  - [ ] Press `o` to open the file in my editor and recommend defaults.. i.e. on zed. opens this...
+  - [ ] svg_viewer_cmd= (quick view on mac), browser on others, use webapp as fallback. can be configed as ur code editor.
+- [ ] During 'add'...
+  - Allow me to search for icons using the ratatui api.
+  - But is that good UX?
+- [ ] Make an icon search interface? basically icones.js.org as a TUI. By using iconify api.
+  - [ ] Also make that a CLI
+  - [ ] . So AI can use them.
+- [ ] local config file setup, or inside a package.json file.

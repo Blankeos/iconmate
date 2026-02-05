@@ -49,34 +49,71 @@ iconmate --folder src/components/Icons/ --folder src/components/icons
 iconmate --folder src/components/Icons/ --icon heroicons:heart --name Heart
 ```
 
-## Configuration (Planned)
+## Configuration
 
-This config system is planned and documented in `folder-system-plan.md`.
+Iconmate now includes a config schema + TS type definitions in the repo:
 
-We are introducing two config scopes:
+- Local config schema: `iconmatelocal.schema.json`
+- Global config schema: `iconmateglobal.schema.json`
+- Schema source: `config-gen/src/schema.ts`
+- TS type definitions: `config-gen/src/types.ts`
 
-- Local config (project): `iconmate.config.json`
-- Global config (user): OS-specific config file under your user profile
+Regenerate schemas from project root:
 
-Planned keys:
+```bash
+just config-schema
+```
 
-- `folder` (local only)
-  - default: `src/assets/icons`
-- `preset` (local only)
-  - default: empty (`""`), meaning plain `.svg`
-- `output_line_template` (local only)
-  - default: `export { default as Icon%name% } from './%icon%%ext%';`
-  - variables: `%name%`, `%icon%`, `%ext%`
-- `svg_view_cmd` (local + global)
-  - default: Quick Look on macOS, browser on Linux/Windows
-  - custom examples: `zed %filename%`, `code %filename%`
+`just config-schema` installs `config-gen` deps and generates both schema files.
 
-`svg_view_cmd` supports `%filename%` token replacement with the SVG path.
+### Local Config (`iconmate.config.json`)
 
-Planned TUI behavior:
+```json
+{
+  "$schema": "./iconmatelocal.schema.json",
+  "folder": "src/assets/icons",
+  "preset": "",
+  "output_line_template": "export { default as Icon%name% } from './%icon%%ext%';",
+  "svg_view_cmd": "zed %filename%"
+}
+```
 
-- Press `o` on a local icon to open it immediately.
-- Press `o` on an Iconify search result to download into cache and open it.
+Local config keys:
+
+- `folder` (default: `src/assets/icons`)
+- `preset` (default: `""`, meaning plain `.svg` mode)
+- `output_line_template` (default: `export { default as Icon%name% } from './%icon%%ext%';`)
+- `svg_view_cmd` (supports `%filename%` token)
+
+Allowed `preset` values:
+
+- `""` (plain SVG mode)
+- `react`
+- `svelte`
+- `solid`
+- `vue`
+- `emptysvg`
+
+### Global Config (user-level)
+
+Global config is for user-wide defaults and currently documents `svg_view_cmd`.
+
+Suggested paths:
+
+- macOS: `~/Library/Application Support/iconmate/config.json`
+- Linux: `~/.config/iconmate/config.json`
+- Windows: `%APPDATA%\\iconmate\\config.json`
+
+Example global config:
+
+```json
+{
+  "svg_view_cmd": "code %filename%"
+}
+```
+
+> [!NOTE]
+> This release adds config schemas and generated docs/types. Runtime loading/precedence wiring in the CLI/TUI is tracked in `folder-system-plan.md`.
 
 ## Installation
 

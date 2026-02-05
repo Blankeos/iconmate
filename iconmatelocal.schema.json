@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json",
+  "type": "object",
+  "properties": {
+    "folder": {
+      "description": "Folder where icons are written.",
+      "default": "src/assets/icons",
+      "examples": [
+        "src/assets/icons",
+        "src/components/icons"
+      ],
+      "type": "string",
+      "minLength": 1
+    },
+    "preset": {
+      "type": "string",
+      "enum": [
+        "",
+        "react",
+        "svelte",
+        "solid",
+        "vue",
+        "emptysvg"
+      ],
+      "title": "Preset",
+      "description": "Icon output preset. Empty string means plain SVG mode. Other values are framework or emptysvg presets.",
+      "default": "",
+      "examples": [
+        "",
+        "react",
+        "solid",
+        "emptysvg"
+      ]
+    },
+    "output_line_template": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Output Line Template",
+      "description": "Template for each export line. Supported placeholders: `%name%`, `%icon%`, `%ext%`.",
+      "default": "export { default as Icon%name% } from './%icon%%ext%';",
+      "examples": [
+        "export { default as Icon%name% } from './%icon%%ext%';"
+      ]
+    },
+    "svg_view_cmd": {
+      "type": "string",
+      "minLength": 1,
+      "title": "SVG View Command",
+      "description": "Command used to open an SVG. Supports `%filename%` placeholder, for example: `zed %filename%`.",
+      "examples": [
+        "zed %filename%",
+        "code %filename%",
+        "open %filename%"
+      ]
+    }
+  },
+  "id": "IconmateLocalConfig",
+  "title": "Iconmate Local Config",
+  "description": "Schema for project-level iconmate config (`iconmate.config.json`)."
+}
