@@ -3,7 +3,7 @@ use crate::utils::popup_area;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, ListItem};
+use ratatui::widgets::{Block, Paragraph};
 use tui_textarea::{Input, Key};
 
 #[derive(Debug)]
@@ -94,57 +94,52 @@ impl App {
 }
 
 pub fn render_delete_popup(f: &mut Frame, app: &mut App) {
-    let area = popup_area(f.area(), 60, 12);
+    let area = popup_area(f.area(), 56, 10);
     f.render_widget(ratatui::widgets::Clear, area);
 
     let layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(1)
+        .margin(2)
         .constraints([
-            Constraint::Min(0),    // List
+            Constraint::Length(2), // Prompt
+            Constraint::Length(1), // Actions
             Constraint::Length(1), // Help
+            Constraint::Min(0),
         ])
         .split(area);
 
     let title = Block::bordered()
-        .title(format!("󰗨 Delete Icon"))
+        .title("Delete Icon")
         .title_style(Style::default().fg(Color::White))
         .border_type(ratatui::widgets::BorderType::Rounded)
         .title_alignment(Alignment::Center);
     f.render_widget(title, area);
 
     if let Some(state) = &mut app.delete_popup_state {
-        let items = vec![
-            // ListItem::new(format!("y Delete this icon ({})", state.selected_item.name)),
-            ListItem::new(format!(
-                "y Delete the icon '{}'",
-                state
-                    .item_to_delete
-                    .as_ref()
-                    .map(|item| item.name.as_str())
-                    .unwrap_or("Name")
-            )),
-            ListItem::new("n Cancel"),
-        ];
+        let icon_name = state
+            .item_to_delete
+            .as_ref()
+            .map(|item| item.name.as_str())
+            .unwrap_or("this icon");
+        let prompt = Paragraph::new(format!("Delete '{icon_name}'?"))
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::White));
+        f.render_widget(prompt, layout[0]);
 
-        let mut list_state = ratatui::widgets::ListState::default();
-        list_state.select(Some(state.selected_index));
-
-        let list_block = ratatui::widgets::List::new(items)
-            .block(Block::default())
-            .highlight_style(if state.selected_index == 0 {
-                Style::default().bg(Color::Red)
-            } else {
-                Style::default().bg(Color::DarkGray)
-            })
-            .highlight_symbol("→ ");
-
-        f.render_stateful_widget(list_block, layout[0], &mut list_state);
+        let actions = if state.selected_index == 0 {
+            Paragraph::new("[y] Delete    n Cancel")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Red))
+        } else {
+            Paragraph::new("y Delete    [n] Cancel")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::Gray))
+        };
+        f.render_widget(actions, layout[1]);
     }
 
-    let help_text =
-        ratatui::widgets::Paragraph::new("y/n or j/k to select | Enter to confirm | Esc to cancel")
-            .alignment(ratatui::layout::Alignment::Center)
-            .style(Style::default().fg(Color::Gray));
-    f.render_widget(help_text, layout[1]);
+    let help_text = Paragraph::new("Enter to confirm, Esc to cancel")
+        .alignment(Alignment::Center)
+        .style(Style::default().fg(Color::DarkGray));
+    f.render_widget(help_text, layout[2]);
 }

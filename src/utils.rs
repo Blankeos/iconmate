@@ -103,6 +103,147 @@ pub enum IconSourceType {
     None,
 }
 
+fn decode_icon_candidate(value: &str) -> String {
+    value
+        .replace("%3A", ":")
+        .replace("%3a", ":")
+        .replace("%2F", "/")
+        .replace("%2f", "/")
+}
+
+fn is_iconify_name(value: &str) -> bool {
+    let Some((prefix, icon)) = value.split_once(':') else {
+        return false;
+    };
+
+    if prefix.trim().is_empty() || icon.trim().is_empty() {
+        return false;
+    }
+
+    !value.chars().any(char::is_whitespace)
+}
+
+fn to_pascal_case(input: &str) -> String {
+    input
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut built = String::new();
+                    built.extend(first.to_uppercase());
+                    built.push_str(&chars.as_str().to_ascii_lowercase());
+                    built
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<String>()
+}
+
+pub fn iconify_name_from_icon_source(icon_source: &str) -> Option<String> {
+    let trimmed = icon_source.trim();
+    if trimmed.is_empty() || trimmed.trim_start().starts_with("<svg") {
+        return None;
+    }
+
+    if !trimmed.contains("://") {
+        let normalized = decode_icon_candidate(trimmed);
+        if is_iconify_name(&normalized) {
+            return Some(normalized);
+        }
+    }
+
+    let url = Url::parse(trimmed).ok()?;
+    let host = url.host_str()?.to_ascii_lowercase();
+
+    if host.contains("icones.js.org") {
+        for (key, value) in url.query_pairs() {
+            if key == "icon" || key == "i" {
+                let candidate = decode_icon_candidate(value.as_ref());
+                if is_iconify_name(&candidate) {
+                    return Some(candidate);
+                }
+            }
+        }
+
+        let segments: Vec<_> = url.path_segments()?.collect();
+        if segments.len() >= 4 && segments[0] == "collection" && segments[2] == "icon" {
+            let candidate = format!(
+                "{}:{}",
+                decode_icon_candidate(segments[1]),
+                decode_icon_candidate(segments[3])
+            );
+            if is_iconify_name(&candidate) {
+                return Some(candidate);
+            }
+        }
+
+        if segments.len() >= 3 && segments[0] == "icon" {
+            let candidate = format!(
+                "{}:{}",
+                decode_icon_candidate(segments[1]),
+                decode_icon_candidate(segments[2])
+            );
+            if is_iconify_name(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+
+    if host.contains("api.iconify.design") {
+        let path = url.path().trim_start_matches('/').trim_end_matches('/');
+
+        if path.ends_with(".json") {
+            let prefix = path.trim_end_matches(".json");
+            for (key, value) in url.query_pairs() {
+                if key == "icons" {
+                    let icon = value.split(',').next().unwrap_or("").trim();
+                    let candidate = format!(
+                        "{}:{}",
+                        decode_icon_candidate(prefix),
+                        decode_icon_candidate(icon)
+                    );
+                    if is_iconify_name(&candidate) {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+
+        let without_ext = path.trim_end_matches(".svg");
+        let decoded = decode_icon_candidate(without_ext);
+        if is_iconify_name(&decoded) {
+            return Some(decoded);
+        }
+
+        if let Some((prefix, icon)) = decoded.split_once('/') {
+            let candidate = format!("{}:{}", prefix, icon);
+            if is_iconify_name(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+
+    None
+}
+
+pub fn default_name_and_filename_from_icon_source(icon_source: &str) -> Option<(String, String)> {
+    let iconify_name = iconify_name_from_icon_source(icon_source)?;
+    let icon_name = iconify_name
+        .split_once(':')
+        .map(|(_, icon)| icon)
+        .unwrap_or(iconify_name.as_str());
+    let component_name = to_pascal_case(icon_name);
+
+    if component_name.is_empty() {
+        return None;
+    }
+
+    Some((component_name, iconify_name))
+}
+
 /// Util: Determines the type of icon source
 pub fn _determine_icon_source_type(icon_source: Option<&String>) -> IconSourceType {
     match icon_source {
@@ -140,14 +281,19 @@ pub async fn _icon_source_to_svg(
             client.svg(icon_source).await?
         }
         IconSourceType::Url => {
-            // Already a full URL
-            let icon_url = Url::parse(icon_source)?;
-            println!("Fetching icon from: {}", icon_url);
+            if let Some(iconify_name) = iconify_name_from_icon_source(icon_source) {
+                let client = IconifyClient::from_env()?;
+                client.svg(&iconify_name).await?
+            } else {
+                // Already a full URL
+                let icon_url = Url::parse(icon_source)?;
+                println!("Fetching icon from: {}", icon_url);
 
-            // Fetch the SVG content
-            let client = reqwest::Client::new();
-            let response = client.get(icon_url).send().await?.error_for_status()?;
-            response.text().await?
+                // Fetch the SVG content
+                let client = reqwest::Client::new();
+                let response = client.get(icon_url).send().await?.error_for_status()?;
+                response.text().await?
+            }
         }
         IconSourceType::None => {
             return Ok(r#"<svg></svg>"#.to_string());
@@ -193,7 +339,11 @@ pub fn _make_svg_filename(
     } else if let Some(icon) = icon_source {
         // Only use icon_source if it's a plain iconify name (no http/https, no <svg)
         match _determine_icon_source_type(icon_source) {
-            IconSourceType::IconifyName => icon.clone(),
+            IconSourceType::IconifyName => {
+                iconify_name_from_icon_source(icon).unwrap_or(icon.clone())
+            }
+            IconSourceType::Url => iconify_name_from_icon_source(icon)
+                .unwrap_or_else(|| name_from_cli.to_string().to_lowercase()),
             _ => name_from_cli.to_string().to_lowercase(),
         }
     } else {
@@ -372,4 +522,51 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_iconify_name_from_plain_value() {
+        assert_eq!(
+            iconify_name_from_icon_source("mdi:heart-outline"),
+            Some("mdi:heart-outline".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_iconify_name_from_iconify_api_url() {
+        assert_eq!(
+            iconify_name_from_icon_source("https://api.iconify.design/mdi%3Aheart.svg"),
+            Some("mdi:heart".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_iconify_name_from_icones_collection_url() {
+        assert_eq!(
+            iconify_name_from_icon_source("https://icones.js.org/collection/lucide/icon/heart"),
+            Some("lucide:heart".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_iconify_name_from_icones_query_url() {
+        assert_eq!(
+            iconify_name_from_icon_source("https://icones.js.org/?icon=tabler:home"),
+            Some("tabler:home".to_string())
+        );
+    }
+
+    #[test]
+    fn derives_name_and_filename_defaults() {
+        assert_eq!(
+            default_name_and_filename_from_icon_source(
+                "https://api.iconify.design/mdi:arrow-left.svg"
+            ),
+            Some(("ArrowLeft".to_string(), "mdi:arrow-left".to_string()))
+        );
+    }
 }

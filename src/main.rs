@@ -8,7 +8,7 @@ mod views;
 use crate::iconify::{IconifyClient, IconifyCollectionResponse, IconifySearchResponse};
 use crate::utils::{
     _determine_icon_source_type, _icon_source_to_svg, _make_svg_filename, IconEntry,
-    IconSourceType, Preset,
+    IconSourceType, Preset, default_name_and_filename_from_icon_source,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
@@ -678,17 +678,29 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
         },
     };
 
+    let inferred_name = icon
+        .as_ref()
+        .and_then(|icon_source| default_name_and_filename_from_icon_source(icon_source))
+        .map(|(name, _)| name);
+
     let name = match &cli.name {
         Some(n) => {
             println!("> ✧ Name: {}", n);
             n.clone()
         }
-        None => Text::new("✧ Name (required, e.g., Heart)")
-            .with_render_config(render_config)
-            .with_validator(inquire::validator::ValueRequiredValidator::new(
-                "Name is required.",
-            ))
-            .prompt()?,
+        None => {
+            let mut prompt = Text::new("✧ Name (required, e.g., Heart)")
+                .with_render_config(render_config)
+                .with_validator(inquire::validator::ValueRequiredValidator::new(
+                    "Name is required.",
+                ));
+
+            if let Some(default_name) = inferred_name.as_deref() {
+                prompt = prompt.with_default(default_name);
+            }
+
+            prompt.prompt()?
+        }
     };
 
     let config = AppConfig {
