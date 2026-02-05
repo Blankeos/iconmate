@@ -1,9 +1,9 @@
 use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
-use ratatui::Frame;
 use tui_textarea::{Input, Key};
 
 impl App {

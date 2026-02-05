@@ -1,15 +1,17 @@
 mod app_state;
 mod form_input;
+mod iconify;
 mod tui;
 mod utils;
 mod views;
 
+use crate::iconify::{IconifyClient, IconifyCollectionResponse, IconifySearchResponse};
 use crate::utils::{
     _determine_icon_source_type, _icon_source_to_svg, _make_svg_filename, IconEntry,
     IconSourceType, Preset,
 };
-use clap::{Parser, Subcommand};
-use reqwest::Url;
+use clap::{Parser, Subcommand, ValueEnum};
+use serde::Serialize;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -81,7 +83,7 @@ enum Commands {
         /// Normally for complex usecases where for example you might need url suffixes for imports i.e. `?react`.
         #[arg(
             long,
-            default_value = "export { default as Icon%name% } from './%icon%.%ext%';"
+            default_value = "export { default as Icon%name% } from './%icon%%ext%';"
         )]
         output_line_template: String,
     },
@@ -95,6 +97,76 @@ enum Commands {
         #[arg(long, global = true)]
         folder: Option<PathBuf>,
     },
+
+    /// Query Iconify collections, search results, and raw SVGs.
+    Iconify {
+        #[command(subcommand)]
+        command: IconifyCommands,
+    },
+}
+
+#[derive(Clone, Debug, ValueEnum, PartialEq)]
+enum OutputFormat {
+    Text,
+    Json,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum GetFormat {
+    Svg,
+    Json,
+}
+
+#[derive(Debug, Subcommand)]
+enum IconifyCommands {
+    /// Search Iconify by keyword.
+    Search {
+        /// Search query, such as "heart".
+        query: String,
+
+        /// Maximum number of records.
+        #[arg(long)]
+        limit: Option<u32>,
+
+        /// Start offset for pagination.
+        #[arg(long)]
+        start: Option<u32>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: OutputFormat,
+
+        /// Include collection metadata (JSON mode only).
+        #[arg(long)]
+        include_collections: bool,
+    },
+
+    /// List available Iconify collections.
+    Collections {
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: OutputFormat,
+    },
+
+    /// List all icons in a collection prefix.
+    Collection {
+        /// Collection prefix, such as "mdi".
+        prefix: String,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: OutputFormat,
+    },
+
+    /// Fetch one icon by Iconify name (<prefix:icon>).
+    Get {
+        /// Iconify icon name, such as "mdi:heart".
+        icon: String,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "svg")]
+        format: GetFormat,
+    },
 }
 
 /// Configuration for the icon fetching and saving logic.
@@ -105,6 +177,167 @@ struct AppConfig {
     filename: Option<String>,
     output_line_template: String,
     preset: Option<Preset>,
+}
+
+#[derive(Serialize)]
+struct SearchJsonOutput {
+    icons: Vec<String>,
+    total: u32,
+    limit: u32,
+    start: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collections: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
+#[derive(Serialize)]
+struct CollectionsJsonOutput {
+    prefix: String,
+    name: String,
+    total: u32,
+}
+
+#[derive(Serialize)]
+struct CollectionJsonOutput {
+    prefix: String,
+    icons: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uncategorized: Option<Vec<String>>,
+}
+
+fn print_json<T: Serialize>(value: &T) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+fn iconify_error_to_anyhow(error: crate::iconify::IconifyError) -> anyhow::Error {
+    match error {
+        crate::iconify::IconifyError::HttpStatus {
+            status,
+            endpoint,
+            body,
+        } => {
+            let body = body.trim();
+            if body.is_empty() {
+                anyhow::anyhow!("Iconify request failed ({status}) for {endpoint}")
+            } else {
+                anyhow::anyhow!(
+                    "Iconify request failed ({status}) for {endpoint}. Response: {body}"
+                )
+            }
+        }
+        other => anyhow::Error::new(other),
+    }
+}
+
+fn into_collection_output(response: IconifyCollectionResponse) -> CollectionJsonOutput {
+    CollectionJsonOutput {
+        prefix: response.prefix,
+        icons: response.icons,
+        uncategorized: response.uncategorized,
+    }
+}
+
+async fn run_iconify_command(command: IconifyCommands) -> anyhow::Result<()> {
+    let client = IconifyClient::from_env().map_err(iconify_error_to_anyhow)?;
+
+    match command {
+        IconifyCommands::Search {
+            query,
+            limit,
+            start,
+            format,
+            include_collections,
+        } => {
+            if include_collections && format != OutputFormat::Json {
+                anyhow::bail!("--include-collections can only be used with --format json");
+            }
+
+            let response: IconifySearchResponse = client
+                .search(&query, limit, start, include_collections)
+                .await
+                .map_err(iconify_error_to_anyhow)?;
+
+            match format {
+                OutputFormat::Text => {
+                    for icon in response.icons {
+                        println!("{icon}");
+                    }
+                }
+                OutputFormat::Json => {
+                    let payload = SearchJsonOutput {
+                        icons: response.icons,
+                        total: response.total,
+                        limit: response.limit,
+                        start: response.start,
+                        collections: response.collections,
+                    };
+                    print_json(&payload)?;
+                }
+            }
+        }
+        IconifyCommands::Collections { format } => {
+            let response = client
+                .collections()
+                .await
+                .map_err(iconify_error_to_anyhow)?;
+
+            let mut rows: Vec<CollectionsJsonOutput> = response
+                .collections
+                .into_iter()
+                .map(|(prefix, meta)| CollectionsJsonOutput {
+                    name: meta.display_name(&prefix),
+                    total: meta.total.unwrap_or(0),
+                    prefix,
+                })
+                .collect();
+
+            rows.sort_by(|a, b| a.prefix.cmp(&b.prefix));
+
+            match format {
+                OutputFormat::Text => {
+                    for row in rows {
+                        println!("{}\t{}\t{}", row.prefix, row.name, row.total);
+                    }
+                }
+                OutputFormat::Json => {
+                    print_json(&rows)?;
+                }
+            }
+        }
+        IconifyCommands::Collection { prefix, format } => {
+            let response = client
+                .collection(&prefix)
+                .await
+                .map_err(iconify_error_to_anyhow)?;
+
+            match format {
+                OutputFormat::Text => {
+                    for icon in &response.icons {
+                        println!("{}:{icon}", response.prefix);
+                    }
+                }
+                OutputFormat::Json => {
+                    let payload = into_collection_output(response);
+                    print_json(&payload)?;
+                }
+            }
+        }
+        IconifyCommands::Get { icon, format } => match format {
+            GetFormat::Svg => {
+                let svg = client.svg(&icon).await.map_err(iconify_error_to_anyhow)?;
+                println!("{svg}");
+            }
+            GetFormat::Json => {
+                let payload = client
+                    .icon_json_by_name(&icon)
+                    .await
+                    .map_err(iconify_error_to_anyhow)?;
+                print_json(&payload)?;
+            }
+        },
+    }
+
+    Ok(())
 }
 
 /// The main logic of the application.
@@ -608,6 +841,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Prompt {}) => run_prompt_mode(&args).await,
         Some(Commands::Delete { folder: _ }) => run_delete_prompt_mode(&args).await,
+        Some(Commands::Iconify { command }) => run_iconify_command(command).await,
         None => {
             let config = app_state::AppConfig {
                 folder: args

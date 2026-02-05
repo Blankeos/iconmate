@@ -984,6 +984,8 @@ dependencies = [
  "ratatui",
  "regex",
  "reqwest",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-test",

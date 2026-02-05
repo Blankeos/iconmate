@@ -1,8 +1,8 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 

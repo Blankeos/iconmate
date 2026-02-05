@@ -2,6 +2,8 @@ use clap::ValueEnum;
 use ratatui::layout::{Constraint, Rect};
 use reqwest::Url;
 
+use crate::iconify::IconifyClient;
+
 #[derive(ValueEnum, Clone, Debug, PartialEq, Hash)]
 pub enum Preset {
     /// Use a blank SVG.
@@ -134,14 +136,8 @@ pub async fn _icon_source_to_svg(
             icon_source.clone()
         }
         IconSourceType::IconifyName => {
-            // Construct the full URL for the icon
-            let icon_url = Url::parse(&format!("https://api.iconify.design/{}.svg", icon_source))?;
-            println!("Fetching icon from: {}", icon_url);
-
-            // Fetch the SVG content
-            let client = reqwest::Client::new();
-            let response = client.get(icon_url).send().await?.error_for_status()?;
-            response.text().await?
+            let client = IconifyClient::from_env()?;
+            client.svg(icon_source).await?
         }
         IconSourceType::Url => {
             // Already a full URL

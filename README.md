@@ -161,6 +161,34 @@ iconmate add --folder src/assets/icons --icon heroicons:heart --name Heart --out
 iconmate delete --folder src/assets/icons
 ```
 
+### Iconify API Commands
+
+```bash
+# Search by keyword (text: one prefix:icon per line)
+iconmate iconify search heart
+
+# Search with pagination and JSON output
+iconmate iconify search heart --limit 20 --start 0 --format json
+
+# Include collection metadata in JSON search output
+iconmate iconify search heart --format json --include-collections
+
+# List all available collections
+iconmate iconify collections
+
+# List icons from one collection prefix
+iconmate iconify collection mdi
+
+# Get one icon as raw SVG (default)
+iconmate iconify get mdi:heart
+
+# Get one icon as raw Iconify JSON
+iconmate iconify get mdi:heart --format json
+```
+
+`iconmate iconify get <prefix:icon> --format json` uses Iconify's JSON endpoint format,
+for example `https://api.iconify.design/mdi.json?icons=heart`.
+
 ### Package.json Scripts
 
 Best practice: Add sensible defaults to your script runner.
