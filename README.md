@@ -49,6 +49,35 @@ iconmate --folder src/components/Icons/ --folder src/components/icons
 iconmate --folder src/components/Icons/ --icon heroicons:heart --name Heart
 ```
 
+## Configuration (Planned)
+
+This config system is planned and documented in `folder-system-plan.md`.
+
+We are introducing two config scopes:
+
+- Local config (project): `iconmate.config.json`
+- Global config (user): OS-specific config file under your user profile
+
+Planned keys:
+
+- `folder` (local only)
+  - default: `src/assets/icons`
+- `preset` (local only)
+  - default: empty (`""`), meaning plain `.svg`
+- `output_line_template` (local only)
+  - default: `export { default as Icon%name% } from './%icon%%ext%';`
+  - variables: `%name%`, `%icon%`, `%ext%`
+- `svg_view_cmd` (local + global)
+  - default: Quick Look on macOS, browser on Linux/Windows
+  - custom examples: `zed %filename%`, `code %filename%`
+
+`svg_view_cmd` supports `%filename%` token replacement with the SVG path.
+
+Planned TUI behavior:
+
+- Press `o` on a local icon to open it immediately.
+- Press `o` on an Iconify search result to download into cache and open it.
+
 ## Installation
 
 ### NPM 🦖

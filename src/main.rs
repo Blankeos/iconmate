@@ -88,7 +88,7 @@ enum Commands {
     },
 
     /// Start an interactive prompt to add icons.
-    Prompt {},
+    Tui {},
 
     /// Delete an icon from your collection of icons
     Delete {
@@ -851,7 +851,7 @@ async fn main() -> anyhow::Result<()> {
             };
             run_app(config).await
         }
-        Some(Commands::Prompt {}) => run_prompt_mode(&args).await,
+        Some(Commands::Tui {}) => run_prompt_mode(&args).await,
         Some(Commands::Delete { folder: _ }) => run_delete_prompt_mode(&args).await,
         Some(Commands::Iconify { command }) => run_iconify_command(command).await,
         None => {
