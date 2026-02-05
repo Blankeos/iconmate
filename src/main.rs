@@ -24,23 +24,23 @@ struct CliArgs {
     command: Option<Commands>,
 
     /// Pathname of the folder where the icon will be saved and index.ts updated.
-    #[arg(long, global = true)]
+    #[arg(long)]
     folder: Option<PathBuf>,
 
     /// Optional preset to use instead of fetching an icon.
-    #[arg(long, global = true)]
+    #[arg(long)]
     preset: Option<Preset>,
 
     /// The alias for the SVG, used in the index.ts export (e.g., "Chevron").
-    #[arg(long, global = true)]
+    #[arg(long)]
     name: Option<String>,
 
     /// The name of the icon (e.g., "stash:chevron") or a full URL to the icon (e.g., "https://api.iconify.design/stash:chevron.svg") or an SVG.
-    #[arg(long, global = true)]
+    #[arg(long)]
     icon: Option<String>,
 
     /// Optional custom filename for the SVG file (without extension). Defaults to the icon name.
-    #[arg(long, global = true)]
+    #[arg(long)]
     filename: Option<String>,
 
     /// Custom template for the export line. Use %name% for the icon alias and %icon% for the filename stem.
@@ -48,7 +48,6 @@ struct CliArgs {
     /// Normally for complex usecases where for example you might need url suffixes for imports i.e. `?react`.
     #[arg(
         long,
-        global = true,
         default_value = "export { default as Icon%name% } from './%icon%%ext%';"
     )]
     output_line_template: String,
@@ -94,7 +93,7 @@ enum Commands {
     /// Delete an icon from your collection of icons
     Delete {
         /// Pathname of the folder where all the icons are saved.
-        #[arg(long, global = true)]
+        #[arg(long)]
         folder: Option<PathBuf>,
     },
 
@@ -216,6 +215,13 @@ fn iconify_error_to_anyhow(error: crate::iconify::IconifyError) -> anyhow::Error
             endpoint,
             body,
         } => {
+            if status == reqwest::StatusCode::NOT_FOUND && endpoint.contains("/collection?prefix=")
+            {
+                return anyhow::anyhow!(
+                    "Iconify collection not found. Use a collection prefix like 'mdi' (not 'mdi:home')."
+                );
+            }
+
             let body = body.trim();
             if body.is_empty() {
                 anyhow::anyhow!("Iconify request failed ({status}) for {endpoint}")
@@ -305,6 +311,12 @@ async fn run_iconify_command(command: IconifyCommands) -> anyhow::Result<()> {
             }
         }
         IconifyCommands::Collection { prefix, format } => {
+            let prefix = prefix
+                .split_once(':')
+                .map(|(collection_prefix, _)| collection_prefix)
+                .unwrap_or(&prefix)
+                .to_string();
+
             let response = client
                 .collection(&prefix)
                 .await

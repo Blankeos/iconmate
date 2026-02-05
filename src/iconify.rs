@@ -41,15 +41,30 @@ impl IconifyClient {
     }
 
     pub async fn collections(&self) -> Result<IconifyCollectionsResponse, IconifyError> {
-        self.get_json("collections", &[]).await
+        let collections: HashMap<String, IconifyCollectionMeta> =
+            self.get_json("collections", &[]).await?;
+        Ok(IconifyCollectionsResponse { collections })
     }
 
     pub async fn collection(
         &self,
         prefix: &str,
     ) -> Result<IconifyCollectionResponse, IconifyError> {
-        self.get_json("collection", &[("prefix".to_string(), prefix.to_string())])
-            .await
+        let response: IconifyCollectionApiResponse = self
+            .get_json("collection", &[("prefix".to_string(), prefix.to_string())])
+            .await?;
+
+        let icons = merge_collection_icons(
+            response.icons,
+            response.uncategorized.as_ref(),
+            response.categories.as_ref(),
+        );
+
+        Ok(IconifyCollectionResponse {
+            prefix: response.prefix,
+            icons,
+            uncategorized: response.uncategorized,
+        })
     }
 
     pub async fn search(
@@ -185,6 +200,35 @@ impl IconifyClient {
     }
 }
 
+fn merge_collection_icons(
+    icons: Vec<String>,
+    uncategorized: Option<&Vec<String>>,
+    categories: Option<&HashMap<String, Vec<String>>>,
+) -> Vec<String> {
+    let mut merged = icons;
+
+    if let Some(uncategorized) = uncategorized {
+        merged.extend(uncategorized.iter().cloned());
+    }
+
+    if let Some(categories) = categories {
+        for category_icons in categories.values() {
+            merged.extend(category_icons.iter().cloned());
+        }
+    }
+
+    let mut deduped = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for icon in merged {
+        if seen.insert(icon.clone()) {
+            deduped.push(icon);
+        }
+    }
+
+    deduped
+}
+
 #[derive(Debug)]
 pub enum IconifyError {
     InvalidBaseUrl {
@@ -268,7 +312,6 @@ pub struct IconifySearchResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IconifyCollectionsResponse {
-    #[serde(default)]
     pub collections: HashMap<String, IconifyCollectionMeta>,
 }
 
@@ -305,6 +348,17 @@ pub struct IconifyCollectionResponse {
     pub icons: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uncategorized: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct IconifyCollectionApiResponse {
+    pub prefix: String,
+    #[serde(default)]
+    pub icons: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uncategorized: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub categories: Option<HashMap<String, Vec<String>>>,
 }
 
 #[cfg(test)]
@@ -362,30 +416,25 @@ mod tests {
     fn parse_collections_response() {
         let fixture = r#"
         {
-            "collections": {
-                "mdi": {
-                    "name": "Material Design Icons",
-                    "total": 7447
-                },
-                "heroicons": {
-                    "title": "Heroicons",
-                    "total": 292
-                }
+            "mdi": {
+                "name": "Material Design Icons",
+                "total": 7447
+            },
+            "heroicons": {
+                "title": "Heroicons",
+                "total": 292
             }
         }
         "#;
 
-        let response: IconifyCollectionsResponse =
+        let response: HashMap<String, IconifyCollectionMeta> =
             serde_json::from_str(fixture).expect("fixture should deserialize");
 
-        let mdi = response.collections.get("mdi").expect("mdi should exist");
+        let mdi = response.get("mdi").expect("mdi should exist");
         assert_eq!(mdi.display_name("mdi"), "Material Design Icons");
         assert_eq!(mdi.total, Some(7447));
 
-        let heroicons = response
-            .collections
-            .get("heroicons")
-            .expect("heroicons should exist");
+        let heroicons = response.get("heroicons").expect("heroicons should exist");
         assert_eq!(heroicons.display_name("heroicons"), "Heroicons");
     }
 
@@ -405,5 +454,34 @@ mod tests {
         assert_eq!(response.prefix, "mdi");
         assert_eq!(response.icons, vec!["home", "heart"]);
         assert_eq!(response.uncategorized, Some(vec!["orphan".to_string()]));
+    }
+
+    #[test]
+    fn merge_icons_from_uncategorized_and_categories() {
+        let categories = HashMap::from([
+            (
+                "Actions".to_string(),
+                vec!["home".to_string(), "heart".to_string()],
+            ),
+            (
+                "Shapes".to_string(),
+                vec!["star".to_string(), "home".to_string()],
+            ),
+        ]);
+
+        let merged = merge_collection_icons(
+            Vec::new(),
+            Some(&vec!["orphan".to_string(), "home".to_string()]),
+            Some(&categories),
+        );
+
+        assert!(merged.contains(&"orphan".to_string()));
+        assert!(merged.contains(&"home".to_string()));
+        assert!(merged.contains(&"heart".to_string()));
+        assert!(merged.contains(&"star".to_string()));
+        assert_eq!(
+            merged.iter().filter(|icon| icon.as_str() == "home").count(),
+            1
+        );
     }
 }
