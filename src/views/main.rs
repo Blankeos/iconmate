@@ -38,10 +38,39 @@ impl MainState {
                 app.app_focus = AppFocus::Main;
                 self.search_textarea = TextArea::default();
                 self.search_items_value = String::from("");
+                self.update_filtered_items(app);
             }
             Key::Enter => {
                 app.app_focus = AppFocus::Main;
                 self.main_state_focus = MainStateFocus::Normal;
+            }
+            Key::Up => {
+                let item_count = if self.search_items_value.is_empty() {
+                    app.items.len()
+                } else {
+                    app.filtered_items.len()
+                };
+                if item_count == 0 {
+                    app.selected_index = 0;
+                } else if app.selected_index > 0 {
+                    app.selected_index -= 1;
+                } else {
+                    app.selected_index = item_count - 1;
+                }
+            }
+            Key::Down => {
+                let item_count = if self.search_items_value.is_empty() {
+                    app.items.len()
+                } else {
+                    app.filtered_items.len()
+                };
+                if item_count == 0 {
+                    app.selected_index = 0;
+                } else if app.selected_index < item_count.saturating_sub(1) {
+                    app.selected_index += 1;
+                } else {
+                    app.selected_index = 0;
+                }
             }
             _ => {
                 self.search_textarea.input(input.clone());
@@ -67,24 +96,28 @@ impl MainState {
                 app.init_help_popup();
             }
             Key::Up | Key::Char('k') => {
-                let item_count = if !app.filtered_items.is_empty() {
-                    app.filtered_items.len()
-                } else {
+                let item_count = if self.search_items_value.is_empty() {
                     app.items.len()
+                } else {
+                    app.filtered_items.len()
                 };
-                if app.selected_index > 0 {
+                if item_count == 0 {
+                    app.selected_index = 0;
+                } else if app.selected_index > 0 {
                     app.selected_index -= 1;
                 } else {
-                    app.selected_index = item_count.saturating_sub(1);
+                    app.selected_index = item_count - 1;
                 }
             }
             Key::Down | Key::Char('j') => {
-                let item_count = if !app.filtered_items.is_empty() {
-                    app.filtered_items.len()
-                } else {
+                let item_count = if self.search_items_value.is_empty() {
                     app.items.len()
+                } else {
+                    app.filtered_items.len()
                 };
-                if app.selected_index < item_count.saturating_sub(1) {
+                if item_count == 0 {
+                    app.selected_index = 0;
+                } else if app.selected_index < item_count.saturating_sub(1) {
                     app.selected_index += 1;
                 } else {
                     app.selected_index = 0;
@@ -105,7 +138,12 @@ impl MainState {
                 case1 || case2
             })
             .cloned()
-            .collect()
+            .collect();
+        if app.filtered_items.is_empty() {
+            app.selected_index = 0;
+        } else if app.selected_index >= app.filtered_items.len() {
+            app.selected_index = app.filtered_items.len().saturating_sub(1);
+        }
     }
 }
 
@@ -192,21 +230,30 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         f.render_widget(search_paragraph, main_chunks[3]);
     }
 
-    let item_list = if app.filtered_items.is_empty() && !main_state.search_items_value.is_empty() {
-        &app.filtered_items
-    } else if main_state.search_items_value.is_empty() {
+    let item_list = if main_state.search_items_value.is_empty() {
         &app.items
     } else {
         &app.filtered_items
     };
+    let show_no_results = !main_state.search_items_value.is_empty() && item_list.is_empty();
+    let rows: Vec<Row> = if show_no_results {
+        vec![Row::new(vec![
+            Cell::from("No results").style(Style::default().fg(Color::DarkGray)),
+            Cell::from(""),
+        ])]
+    } else {
+        item_list
+            .iter()
+            .map(|item| {
+                Row::new(vec![
+                    Cell::from(item.name.as_str()),
+                    Cell::from(item.file_path.as_str()),
+                ])
+            })
+            .collect()
+    };
 
-    let rows = item_list.iter().map(|item| {
-        Row::new(vec![
-            Cell::from(item.name.as_str()),
-            Cell::from(item.file_path.as_str()),
-        ])
-    });
-
+    let has_rows = !rows.is_empty();
     let table = Table::new(
         rows,
         [Constraint::Percentage(50), Constraint::Percentage(50)],
@@ -222,7 +269,9 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
     .row_highlight_style(Style::default().bg(Color::DarkGray));
 
     let mut state = ratatui::widgets::TableState::default();
-    state.select(Some(app.selected_index));
+    if !show_no_results && has_rows {
+        state.select(Some(app.selected_index));
+    }
     f.render_stateful_widget(table, main_chunks[4], &mut state);
 
     let instructions = "a Add | d Delete | / Search | ? Help | q Quit | Up/Down (j/k)";
