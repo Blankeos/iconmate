@@ -19,6 +19,8 @@
   ·
   <a href="#command-line">CLI Commands</a>
   ·
+  <a href="#ai-ready-workflows">AI Ready</a>
+  ·
   <a href="#configuration">Configuration</a>
 </p>
 
@@ -28,10 +30,11 @@ Use [icones.js.org](https://icones.js.org), a direct SVG URL, or raw SVG markup.
 
 ## Why iconmate?
 
+- **AI-ready automation** 🤖: Let your coding agents get icons and add it to your project! A CLI is basically an MCP, just let AI use `iconmate --help` and it should be able to get everything running!
 - **Zero dependencies** 📦: No icon library runtime added to your app
 - **Framework-native output** 🧩: Generate files for React, Vue, Svelte, Solid, or plain SVG
-- **Interactive by default** 🎮: Run `iconmate` and follow guided prompts
-- **Multiple sources** 🌐: Pull icons from Iconify names, URLs, or raw SVG
+- **Interactive by default** 🎮: Run `iconmate` and have a pleasant interactive TUI
+- **Multiple sources** 🌐: Pull icons from Iconify names, URLs, or even raw SVG (which means it works with your private icon packs i.e. Anron)
 - **Fast workflow** ⚡: Generate file + export line in one step
 - **Prototype-friendly** 🏗️: Create empty SVG placeholders when needed
 
@@ -140,37 +143,22 @@ Example global config:
 ### NPM 🦖
 
 ```bash
+# Install globally with either:
 npm install -g iconmate
-# or
 pnpm add -g iconmate
-# or
 bun add -g iconmate
-```
-
-For one-off usage:
-
-```bash
+# Use without installing with either:
 npx iconmate
-# or
 pnpm dlx iconmate
-# or
 bunx iconmate
 ```
-
-> [!NOTE]
-> **Note for Bun users:** Bun doesn't run `postinstall` scripts [by default](https://bun.com/guides/install/trusted) which is needed to install the iconmate binary. Add `"trustedDependencies": ["iconmate"]` to your `package.json` to do it! But you're only limited to running it with a package.json.
->
-> Recommended: Just use pnpx for quick one-off usage. If in a project, either install globally or configure trustDependencies.
 
 ### Install from Cargo 🦀
 
 ```bash
 cargo install iconmate
-```
 
-Or clone and install from source:
-
-```bash
+# Or clone and install from source:
 git clone https://github.com/blankeos/iconmate.git
 cd iconmate
 cargo install --path .
@@ -190,32 +178,23 @@ Determines the output filetype and the contents inside that file type.
 | `emptysvg` | `.svg`    | Placeholder       |
 
 > [!IMPORTANT]
-> If you want to use `.svg` file types, make sure to setup [svgr](https://github.com/gregberge/svgr). I covered how to do this in:
+> If you want to use `.svg` file types, make sure to setup [svgr](https://github.com/gregberge/svgr) for your js apps. I covered how to do this in:
 >
 > - [SolidJS (Vite)](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library#use-svg-only-with-solidjs)
 > - [React (Vite)](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library#use-svg-only-with-react-vite)
 > - [React (NextJS)](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library#use-svg-only-with-react-nextjs)
 > - Vue - contribution welcome!
-> - Svelte - couldn't find an svgr integration :(
+> - Svelte - couldn't find an svgr integration. Just use the svg preset.
 
 ## Command Line
 
-### Interactive Mode (Recommended)
+### Interactive TUI Mode (Recommended)
 
 ```bash
 iconmate
-
-# Description of each prompt:
-> 📁 Folder (src/assets/icons/) # where your icons will be saved.
-
-> ✨ Preset # i.e. How will it be saved? An `.svg` or `.tsx` file in react, solid, etc.
-
-> 🚀 Icon # Source of your icon. i.e. 'heroicons:heart' from https://icones.js.org, full URL, or any SVG. Can be empty except for 'emptysvg' preset.
-
-> 🌄 Filename # The filename without the extension. i.e. heroicons:heart. Will only be prompted if you used an SVG, or an URL on icon.
-
-> 💎 Name # The "Heart" in <IconHeart />
 ```
+
+This section is helpful for AI:
 
 ### Add Specific Icon
 
@@ -233,6 +212,12 @@ iconmate add --folder src/assets/icons --icon https://api.iconify.design/mdi:hea
 
 ```bash
 iconmate add --folder src/assets/icons --icon '<svg>...</svg>' --name Heart
+```
+
+You can also pull raw SVG directly from the Iconify API:
+
+```bash
+iconmate add --folder src/assets/icons --icon "$(curl -fsSL https://api.iconify.design/mdi:heart.svg)" --name Heart
 ```
 
 ### Custom Export Template
@@ -275,6 +260,23 @@ iconmate iconify get mdi:heart --format json
 `iconmate iconify get <prefix:icon> --format json` uses Iconify's JSON endpoint format,
 for example `https://api.iconify.design/mdi.json?icons=heart`.
 
+### AI-Ready Workflows
+
+`iconmate` is designed to be easy for AI agents and scripts to drive end-to-end.
+
+```bash
+# 1) Search in machine-readable JSON
+iconmate iconify search heart --format json --limit 20 --include-collections
+
+# 2) Add an icon non-interactively from prefix:name
+iconmate add --folder src/assets/icons --icon mdi:heart --name Heart
+
+# 3) Or fetch raw SVG from Iconify API and add directly
+iconmate add --folder src/assets/icons --icon "$(curl -fsSL https://api.iconify.design/mdi:heart.svg)" --name Heart
+```
+
+This means an AI can search, choose, and add icons without opening a browser.
+
 ### Package.json Scripts
 
 Best practice: Add sensible defaults to your script runner.
@@ -294,9 +296,9 @@ Best practice: Add sensible defaults to your script runner.
 
 ## How It Works
 
-1. **Find your icon**: Visit https://icones.js.org.
-2. **Copy the name**: Like `heroicons:heart`.
-3. **Run iconmate**: `iconmate`
+1. **Find your icon**: Use https://icones.js.org _or_ `iconmate iconify search <query>`.
+2. **Pick the icon id**: For example `heroicons:heart`.
+3. **Add with iconmate**: Interactive (`iconmate`) or direct (`iconmate add ...`).
 
 ![illustration](https://raw.githubusercontent.com/Blankeos/iconmate/refs/heads/main/_docs/icones-cli-illustration.png)
 
@@ -323,15 +325,22 @@ Contributions are welcome—pull requests for bug fixes, new framework presets, 
 - ✅ Custom export templates
 - ✅ Zero-config installation
 
-### Original Future Plans
+### Roadmap & Out-of-scoped
 
 - [x] An empty command. Creates an .svg, adds it to the index.ts with a name you can specify.
 - [x] Paste an actual svg instead of an icon `name`.
 - [x] Just a `--preset=svg,react,solid,svelte,vue` - which basically overrides templates. Default is `svg`.
 - [x] Prompt Mode via `iconmate` - Interactive mode so you won't need to pass arguments.
 - [x] Delete an icon using `iconmate delete`
+- [x] An interactive TUI instead of prompt-mode.
+  - [x] Rename in the TUI (but recommended for you to just use the LSP to do it)
+  - [x] A lot of TUI functionalities wokr
+- [x] `iconmate iconify --help` commands for AI to easily look for icons itself.
+- [ ] Search and add Iconify icons directly inside the TUI (no need to open https://icones.js.org).
 - [ ] Other frameworks i.e. --preset=flutter or Go/Rust GUI apps? (Not sure how they work yet though).
 - [ ] ~Zed or VSCode Extension~ (seems unnecessary now, it's just a CLI)
+
+### Near-Term Roadmap
 
 ---
 
