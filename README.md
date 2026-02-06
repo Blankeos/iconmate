@@ -41,16 +41,11 @@ Use [icones.js.org](https://icones.js.org), a direct SVG URL, or raw SVG markup.
 # Install
 npm install -g iconmate
 
-# Run inside your project 🚀
+# Run the TUI in your project 🚀
 iconmate
-
-> 📁 Folder (src/assets/icons/) # Enter
-> ✨ Preset # Choose react
-> 🚀 Icon # heroicons:heart
-> 💎 Name # Heart
 ```
 
-✨ That's it. The interactive CLI guides you through adding icons to your project.
+✨ That's it. The interactive TUI guides you through adding icons to your project.
 
 ```tsx
 // 👇 Then, you can just easily use any icon on your project like this!
@@ -62,19 +57,21 @@ function MyApp() {
 }
 ```
 
-You can also add sensible defaults by passing flags:
+## Configuration
+
+You can also add sensible defaults by passing flags as configs:
 
 ```bash
 iconmate --folder src/components/Icons/ --folder src/components/icons
 iconmate --folder src/components/Icons/ --icon heroicons:heart --name Heart
 ```
 
-## Configuration
+Iconmate now includes config schemas + TS type definitions in the repo:
 
-Iconmate now includes a config schema + TS type definitions in the repo:
-
-- Local config schema: `iconmatelocal.schema.json`
-- Global config schema: `iconmateglobal.schema.json`
+- Local config schema (repo): [`iconmatelocal.schema.json`](https://github.com/Blankeos/iconmate/blob/main/iconmatelocal.schema.json)
+- Global config schema (repo): [`iconmateglobal.schema.json`](https://github.com/Blankeos/iconmate/blob/main/iconmateglobal.schema.json)
+- Local config schema (raw): `https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json`
+- Global config schema (raw): `https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmateglobal.schema.json`
 - Schema source: `config-gen/src/schema.ts`
 - TS type definitions: `config-gen/src/types.ts`
 
@@ -90,13 +87,15 @@ just config-schema
 
 ```json
 {
-  "$schema": "./iconmatelocal.schema.json",
+  "$schema": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json",
   "folder": "src/assets/icons",
   "preset": "",
   "output_line_template": "export { default as Icon%name% } from './%icon%%ext%';",
   "svg_view_cmd": "zed %filename%"
 }
 ```
+
+Use the raw URL for `$schema` so editors can fetch JSON directly.
 
 Local config keys:
 
@@ -128,6 +127,7 @@ Example global config:
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json",
   "svg_view_cmd": "code %filename%"
 }
 ```
@@ -283,12 +283,6 @@ Best practice: Add sensible defaults to your script runner.
 "scripts": {
   // Usage: npm run iconmate (usually this is the only command you need)!
   "iconmate": "iconmate --folder src/assets/icons/"
-
-  // Usage: npm run iconmate-react
-  "iconmate-react": "iconmate --folder ./src/assets/icons/ --preset react",
-
-  // Usage: npm run iconmate-empty
-  "iconmate-empty": "iconmate --folder ./src/assets/icons/ --preset emptysvg",
 }
 ```
 
