@@ -3,7 +3,7 @@ use crate::{
     views::main::render_main_view,
 };
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -66,6 +66,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     match app.app_focus {
         AppFocus::AddPopup => crate::views::add_popup::render_add_popup(f, app),
         AppFocus::DeletePopup => crate::views::delete_popup::render_delete_popup(f, app),
+        AppFocus::RenamePopup => crate::views::rename_popup::render_rename_popup(f, app),
         AppFocus::HelpPopup => crate::views::help_popup::render_help_popup(f, app),
         _ => {}
     }

@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use ratatui::layout::{Constraint, Rect};
+use ratatui::layout::Rect;
 use reqwest::Url;
 
 use crate::iconify::IconifyClient;
@@ -524,9 +524,146 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn normalize_icon_relative_path(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string()
+}
+
+pub fn rename_icon_entry(
+    folder_path: &str,
+    current_file_path: &str,
+    new_file_path_input: &str,
+) -> anyhow::Result<()> {
+    use std::fs;
+    use std::path::{Component, Path};
+
+    let current_relative_path = normalize_icon_relative_path(current_file_path);
+    if current_relative_path.is_empty() {
+        anyhow::bail!("Current icon path is empty");
+    }
+
+    let mut new_relative_path = normalize_icon_relative_path(new_file_path_input);
+    if new_relative_path.is_empty() {
+        anyhow::bail!("New filename cannot be empty");
+    }
+
+    let new_path = Path::new(&new_relative_path);
+    if new_path.is_absolute() {
+        anyhow::bail!("Please provide a relative filename");
+    }
+    if new_path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        anyhow::bail!("Parent directory traversals are not allowed");
+    }
+
+    if new_path.extension().is_none() {
+        if let Some(extension) = Path::new(&current_relative_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+        {
+            new_relative_path = format!("{}.{}", new_relative_path, extension);
+        }
+    }
+
+    if new_relative_path == current_relative_path {
+        anyhow::bail!("Filename is unchanged");
+    }
+
+    let folder = Path::new(folder_path);
+    let current_abs_path = folder.join(&current_relative_path);
+    if !current_abs_path.exists() {
+        anyhow::bail!("Icon file not found: {}", current_abs_path.display());
+    }
+
+    let new_abs_path = folder.join(&new_relative_path);
+    if new_abs_path.exists() {
+        anyhow::bail!("Target file already exists: {}", new_abs_path.display());
+    }
+
+    let index_path = folder.join("index.ts");
+    if !index_path.exists() {
+        anyhow::bail!("No index.ts found in folder: {}", folder.display());
+    }
+
+    let index_contents = fs::read_to_string(&index_path)?;
+    let mut replaced_count = 0usize;
+    let mut updated_lines = Vec::new();
+    for line in index_contents.lines() {
+        if let Some(from_pos) = line.find("from ") {
+            let path_start_search = from_pos + "from ".len();
+            let line_after_from = &line[path_start_search..];
+            if let Some(first_quote_offset) = line_after_from.find(|c| c == '"' || c == '\'') {
+                let first_quote_idx = path_start_search + first_quote_offset;
+                let quote_char = line.as_bytes()[first_quote_idx] as char;
+                let path_start_idx = first_quote_idx + 1;
+                if let Some(second_quote_offset) = line[path_start_idx..].find(quote_char) {
+                    let path_end_idx = path_start_idx + second_quote_offset;
+                    let matched_path = &line[path_start_idx..path_end_idx];
+
+                    if normalize_icon_relative_path(matched_path) == current_relative_path {
+                        let with_dot_prefix = matched_path.starts_with("./");
+                        let replacement_path = if with_dot_prefix {
+                            format!("./{}", new_relative_path)
+                        } else {
+                            new_relative_path.clone()
+                        };
+                        let updated_line = format!(
+                            "{}{}{}{}",
+                            &line[..path_start_idx],
+                            replacement_path,
+                            quote_char,
+                            &line[path_end_idx + 1..]
+                        );
+                        updated_lines.push(updated_line);
+                        replaced_count += 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        updated_lines.push(line.to_string());
+    }
+
+    if replaced_count == 0 {
+        anyhow::bail!(
+            "Could not find an export path for '{}' in index.ts",
+            current_file_path
+        );
+    }
+
+    if let Some(parent) = new_abs_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::rename(&current_abs_path, &new_abs_path)?;
+
+    let mut updated_index = updated_lines.join("\n");
+    if index_contents.ends_with('\n') {
+        updated_index.push('\n');
+    }
+    if let Err(write_error) = fs::write(&index_path, updated_index) {
+        let _ = fs::rename(&new_abs_path, &current_abs_path);
+        anyhow::bail!(
+            "Failed to update index.ts after rename: {}. Rolled back file rename.",
+            write_error
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn parses_iconify_name_from_plain_value() {
@@ -567,6 +704,78 @@ mod tests {
                 "https://api.iconify.design/mdi:arrow-left.svg"
             ),
             Some(("ArrowLeft".to_string(), "mdi:arrow-left".to_string()))
+        );
+    }
+
+    #[test]
+    fn renames_file_and_updates_index_path() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let old_file = icons_folder.join("old-name.svg");
+        std::fs::write(&old_file, "<svg></svg>").expect("old file should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconHeart } from \"./old-name.svg\";\n",
+        )
+        .expect("index.ts should be created");
+
+        rename_icon_entry(
+            icons_folder.to_string_lossy().as_ref(),
+            "./old-name.svg",
+            "new-name",
+        )
+        .expect("rename should succeed");
+
+        assert!(!old_file.exists(), "old file should be removed");
+        assert!(
+            icons_folder.join("new-name.svg").exists(),
+            "new file should exist"
+        );
+
+        let index_contents =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(
+            index_contents.contains("export { default as IconHeart } from \"./new-name.svg\";"),
+            "index.ts should point to the renamed file"
+        );
+    }
+
+    #[test]
+    fn renames_path_without_touching_alias() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let old_file = icons_folder.join("foo.svg");
+        std::fs::write(&old_file, "<svg></svg>").expect("old file should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconAliasStays } from './foo.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        rename_icon_entry(
+            icons_folder.to_string_lossy().as_ref(),
+            "./foo.svg",
+            "bar.svg",
+        )
+        .expect("rename should succeed");
+
+        let index_contents =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(
+            index_contents.contains("export { default as IconAliasStays } from './bar.svg';"),
+            "index.ts should update only the path"
+        );
+        assert!(
+            !index_contents.contains("Iconbar") && index_contents.contains("IconAliasStays"),
+            "icon alias should stay unchanged"
         );
     }
 }

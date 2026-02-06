@@ -1,8 +1,8 @@
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
+    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -18,6 +18,8 @@ pub enum MainStateFocus {
 pub struct MainState {
     pub main_state_focus: MainStateFocus,
     pub search_items_value: String,
+    pub status_message: Option<String>,
+    pub status_is_error: bool,
 
     pub search_textarea: TextArea<'static>,
 }
@@ -27,8 +29,20 @@ impl MainState {
         Self {
             main_state_focus: MainStateFocus::Normal,
             search_items_value: String::new(),
+            status_message: None,
+            status_is_error: false,
             search_textarea: TextArea::default(),
         }
+    }
+
+    fn set_status(&mut self, message: String, is_error: bool) {
+        self.status_message = Some(message);
+        self.status_is_error = is_error;
+    }
+
+    fn clear_status(&mut self) {
+        self.status_message = None;
+        self.status_is_error = false;
     }
 
     pub fn handlekeys_search(&mut self, input: &Input, app: &mut App) {
@@ -89,6 +103,23 @@ impl MainState {
             Key::Char('d') => {
                 app.init_delete_popup();
             }
+            Key::Char('r') => {
+                app.init_rename_popup();
+            }
+            Key::Char('o') => match app.open_selected_icon() {
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithCustomCommand) => self.clear_status(),
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithOsDefault) => self.clear_status(),
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithOsDefaultAfterCustomFailure) => self
+                    .set_status(
+                        "svg_viewer_cmd failed; opened icon via OS default viewer".to_string(),
+                        false,
+                    ),
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithWebPreview(url)) => self.set_status(
+                    format!("Local open failed; opened web preview: {url}"),
+                    false,
+                ),
+                Err(error) => self.set_status(format!("Failed to open icon: {}", error), true),
+            },
             Key::Char('/') => {
                 self.main_state_focus = MainStateFocus::Search;
             }
@@ -148,6 +179,28 @@ impl MainState {
 }
 
 impl App {
+    pub fn open_selected_icon(&self) -> anyhow::Result<crate::viewer::OpenSvgOutcome> {
+        use std::path::Path;
+
+        let item_list = if self.main_state.search_items_value.is_empty() {
+            &self.items
+        } else {
+            &self.filtered_items
+        };
+        let item = item_list
+            .get(self.selected_index)
+            .ok_or_else(|| anyhow::anyhow!("No icon selected."))?;
+
+        let file_path = Path::new(&item.file_path);
+        let absolute_path = if file_path.is_absolute() {
+            file_path.to_path_buf()
+        } else {
+            Path::new(&self.config.folder).join(file_path)
+        };
+
+        crate::viewer::open_svg_with_fallback(&absolute_path, self.config.svg_viewer_cmd.as_deref())
+    }
+
     pub fn handlekeys_main(&mut self, input: Input) {
         let main_state_ptr = &mut self.main_state as *mut MainState; // Replace MainState with your actual type
         match self.main_state.main_state_focus {
@@ -199,6 +252,17 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
     f.render_widget(tagline_paragraph, main_chunks[1]);
+
+    let status_text = main_state.status_message.as_deref().unwrap_or("");
+    let status_color = if main_state.status_is_error {
+        Color::Red
+    } else {
+        Color::DarkGray
+    };
+    let status_paragraph = Paragraph::new(status_text)
+        .style(Style::default().fg(status_color))
+        .alignment(Alignment::Center);
+    f.render_widget(status_paragraph, main_chunks[2]);
 
     if is_searching {
         let chunks = ratatui::layout::Layout::default()
@@ -274,7 +338,8 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
     }
     f.render_stateful_widget(table, main_chunks[4], &mut state);
 
-    let instructions = "a Add | d Delete | / Search | ? Help | q Quit | Up/Down (j/k)";
+    let instructions =
+        "a Add | d Delete | r Rename | o Open | / Search | ? Help | q Quit | Up/Down (j/k)";
     let version_label = format!("iconmate v{}", env!("CARGO_PKG_VERSION"));
     let footer_layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Horizontal)

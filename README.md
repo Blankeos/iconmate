@@ -1,19 +1,39 @@
-# iconmate 💚
+<p align="center">
+  <img src="./_docs/iconmate_logo.png" alt="iconmate logo" width="180" />
+</p>
 
-Your new favorite way to manage icons for your Vite, NextJS projects without icon libraries!
+<h1 align="center">iconmate</h1>
 
-Based on my blog post on [Why you might not need an icon library](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library). Built with 🦀 Rust, ⚡️ designed for speed, 🦅 made for developers who hate icon library bloat.
+<p align="center"><strong>Add SVG icons to your JS apps without icon libraries.</strong></p>
 
-Stop installing bloated icon libraries. All you need is [icones.js.org](https://icones.js.org) or your designer's Figma icon pack and paste them into your project with surgical precision.
+<p align="center">
+  <img src="./_docs/iconmate_banner.jpg" alt="iconmate banner" width="100%" />
+</p>
 
-**What Makes It Special ✨**
+<p align="center">
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#installation">Install</a>
+  ·
+  <a href="#framework-presets">Presets</a>
+  ·
+  <a href="#command-line">CLI Commands</a>
+  ·
+  <a href="#configuration">Configuration</a>
+</p>
 
-- **Zero Dependencies** 📦: Just a CLI, No icon libraries to bundle
-- **Framework Native** 🧩: Works with React, Vue, Svelte, Solid - generates components automatically
-- **Interactive Mode** 🎮: Just run `iconmate` and let it guide you
-- **URL Support** 🌐: Fetch from any SVG URL, not just iconify
-- **Raw SVG** 📋: Copy-paste SVG code directly
-- **Empty SVG** 🏗️: Create placeholder icons for rapid prototyping
+Built from my blog post on [Why you might not need an icon library](https://carlotaleon.net/blog/why-you-dont-need-an-icon-library), `iconmate` is a Rust-powered CLI for developers who want the speed and control of plain files without icon-package bloat.
+
+Use [icones.js.org](https://icones.js.org), a direct SVG URL, or raw SVG markup. `iconmate` drops the icon straight into your project and keeps your exports tidy.
+
+## Why iconmate?
+
+- **Zero dependencies** 📦: No icon library runtime added to your app
+- **Framework-native output** 🧩: Generate files for React, Vue, Svelte, Solid, or plain SVG
+- **Interactive by default** 🎮: Run `iconmate` and follow guided prompts
+- **Multiple sources** 🌐: Pull icons from Iconify names, URLs, or raw SVG
+- **Fast workflow** ⚡: Generate file + export line in one step
+- **Prototype-friendly** 🏗️: Create empty SVG placeholders when needed
 
 ## Quick Start
 
@@ -30,7 +50,7 @@ iconmate
 > 💎 Name # Heart
 ```
 
-✨ That's it. The interactive CLI guides you through adding icon to your project!
+✨ That's it. The interactive CLI guides you through adding icons to your project.
 
 ```tsx
 // 👇 Then, you can just easily use any icon on your project like this!

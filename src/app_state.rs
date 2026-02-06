@@ -7,6 +7,7 @@ pub enum AppFocus {
     Main,
     AddPopup,
     DeletePopup,
+    RenamePopup,
     HelpPopup,
 }
 
@@ -15,6 +16,10 @@ pub struct AppConfig {
     pub folder: String,
     pub preset: Option<String>,
     pub template: Option<String>,
+    pub svg_viewer_cmd: Option<String>,
+    pub svg_viewer_cmd_source: String,
+    pub global_config_loaded: bool,
+    pub project_config_loaded: bool,
 }
 
 pub struct App {
@@ -37,6 +42,7 @@ pub struct App {
     pub main_state: crate::views::main::MainState,
     pub add_popup_state: Option<crate::views::add_popup::AddPopupState>,
     pub delete_popup_state: Option<crate::views::delete_popup::DeletePopupState>,
+    pub rename_popup_state: Option<crate::views::rename_popup::RenamePopupState>,
 }
 
 impl App {
@@ -55,6 +61,7 @@ impl App {
             app_focus: AppFocus::Main,
             add_popup_state: None,
             delete_popup_state: None,
+            rename_popup_state: None,
             main_state: MainState::new(),
         };
 
@@ -78,6 +85,7 @@ impl App {
             AppFocus::Main => self.handlekeys_main(key),
             AppFocus::AddPopup => self.handlekeys_add_popup(key),
             AppFocus::DeletePopup => self.handlekeys_delete_popup(key),
+            AppFocus::RenamePopup => self.handlekeys_rename_popup(key),
             AppFocus::HelpPopup => self.handlekeys_help_popup(key),
         }
     }

@@ -1,8 +1,10 @@
 mod app_state;
+mod config;
 mod form_input;
 mod iconify;
 mod tui;
 mod utils;
+mod viewer;
 mod views;
 
 use crate::iconify::{IconifyClient, IconifyCollectionResponse, IconifySearchResponse};
@@ -46,11 +48,8 @@ struct CliArgs {
     /// Custom template for the export line. Use %name% for the icon alias and %icon% for the filename stem.
     /// Variables: %icon%, %name%
     /// Normally for complex usecases where for example you might need url suffixes for imports i.e. `?react`.
-    #[arg(
-        long,
-        default_value = "export { default as Icon%name% } from './%icon%%ext%';"
-    )]
-    output_line_template: String,
+    #[arg(long)]
+    output_line_template: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -708,7 +707,10 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
         name,
         icon,
         filename,
-        output_line_template: cli.output_line_template.clone(),
+        output_line_template: cli
+            .output_line_template
+            .clone()
+            .unwrap_or_else(|| config::DEFAULT_OUTPUT_LINE_TEMPLATE.to_string()),
         preset,
     };
     run_app(config).await
@@ -867,17 +869,27 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Delete { folder: _ }) => run_delete_prompt_mode(&args).await,
         Some(Commands::Iconify { command }) => run_iconify_command(command).await,
         None => {
+            let resolved = config::resolve_tui_config(
+                args.folder.as_ref(),
+                args.preset.as_ref(),
+                args.output_line_template.as_ref(),
+            )?;
+
+            for warning in &resolved.warnings {
+                eprintln!("Warning: {warning}");
+            }
+            for info in &resolved.info {
+                eprintln!("{info}");
+            }
+
             let config = app_state::AppConfig {
-                folder: args
-                    .folder
-                    .unwrap_or_else(|| PathBuf::from("src/assets/icons"))
-                    .display()
-                    .to_string(),
-                preset: match args.preset {
-                    Some(p) => Some(format!("{:?}", p)),
-                    None => None,
-                },
-                template: Some(args.output_line_template),
+                folder: resolved.folder,
+                preset: resolved.preset,
+                template: Some(resolved.output_line_template),
+                svg_viewer_cmd: resolved.svg_viewer_cmd,
+                svg_viewer_cmd_source: resolved.svg_viewer_cmd_source,
+                global_config_loaded: resolved.global_config_loaded,
+                project_config_loaded: resolved.project_config_loaded,
             };
             tui::run(config).await
         }

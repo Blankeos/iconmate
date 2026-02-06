@@ -17,29 +17,29 @@
 
 ## Next high-priority slice
 
-- [ ] Rename flow UX
-  - Add a lightweight rename action that only renames the file path export target.
-  - Keep icon component alias unchanged and show a warning for alias rename in-editor.
-  - Add explicit messaging to recommend IDE rename refactor for symbol-level rename.
-  - Acceptance: rename updates file + `index.ts` export path safely.
+- [x] Rename flow UX
+  - [x] Add a lightweight rename action that only renames the file path export target.
+  - [x] Keep icon component alias unchanged and show a warning for alias rename in-editor.
+  - [x] Add explicit messaging to recommend IDE rename refactor for symbol-level rename.
+  - [x] Acceptance: rename updates file + `index.ts` export path safely.
 
-- [ ] Global system prefs (`~/.config/iconmate.jsonc` or `~/iconmate.jsonc`)
-  - Confirm final search paths and precedence for macOS/Linux/Windows.
-  - Implement robust loader with unknown-key warnings (non-fatal).
-  - Add schema validation and friendly error output with file path context.
-  - Acceptance: startup logs/source reflect applied global values.
+- [x] Global system prefs (`~/.config/iconmate.jsonc` or `~/iconmate.jsonc`)
+  - [x] Confirm final search paths and precedence for macOS/Linux/Windows.
+  - [x] Implement robust loader with unknown-key warnings (non-fatal).
+  - [x] Add schema validation and friendly error output with file path context.
+  - [x] Acceptance: startup logs/source reflect applied global values.
 
-- [ ] `o` key to open selected icon
-  - Add keybind in main list and Iconify search list.
-  - Resolve viewer command from local -> global -> OS default.
-  - Add `%filename%` token substitution and command escaping behavior.
-  - Acceptance: selected icon opens in configured app/editor.
+- [x] `o` key to open selected icon
+  - [x] Add keybind in main list and shared opener support for Iconify search list integration.
+  - [x] Resolve viewer command from local -> global -> OS default.
+  - [x] Add `%filename%` token substitution and command escaping behavior.
+  - [x] Acceptance: selected icon opens in configured app/editor.
 
-- [ ] `svg_viewer_cmd` defaults and fallback behavior
-  - macOS: Quick Look/open behavior.
-  - Linux/Windows: browser/system default fallback.
-  - Fallback to web preview when local command fails.
-  - Acceptance: command works cross-platform with graceful fallback.
+- [x] `svg_viewer_cmd` defaults and fallback behavior
+  - [x] macOS: Quick Look/open behavior.
+  - [x] Linux/Windows: browser/system default fallback.
+  - [x] Fallback to web preview when local command fails.
+  - [x] Acceptance: command works cross-platform with graceful fallback.
 
 ## Add-flow product direction
 
