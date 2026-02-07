@@ -272,6 +272,19 @@ impl App {
             .sync_cursor(PRESET_FIELD_IDX); // The first.
     }
 
+    pub fn init_add_popup_with_icon_source(&mut self, icon_source: &str) {
+        self.init_add_popup();
+
+        if let Some(state) = self.add_popup_state.as_mut() {
+            state.inputs[ICON_FIELD_IDX] = TextArea::default();
+            state.inputs[ICON_FIELD_IDX].insert_str(icon_source);
+            state.icon = Some(icon_source.to_string());
+            state.apply_icon_based_defaults();
+            state.clear_status();
+            state.sync_cursor(PRESET_FIELD_IDX);
+        }
+    }
+
     fn submit_add_popup(&mut self) -> Result<(), String> {
         let (preset, icon, filename, name) = {
             let Some(state) = self.add_popup_state.as_mut() else {
@@ -561,5 +574,55 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             .alignment(Alignment::Center)
             .style(Style::default().fg(footer_color));
         f.render_widget(footer, layout[FOOTER_FIELD_IDX]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn test_config(folder: String) -> crate::app_state::AppConfig {
+        crate::app_state::AppConfig {
+            folder,
+            preset: None,
+            template: None,
+            svg_viewer_cmd: None,
+            svg_viewer_cmd_source: "test".to_string(),
+            global_config_loaded: false,
+            project_config_loaded: false,
+        }
+    }
+
+    #[test]
+    fn q_types_into_add_popup_textarea_without_quitting() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&folder).expect("icons folder should be created");
+
+        let mut app = App::new(test_config(folder.to_string_lossy().into_owned()));
+        app.init_add_popup();
+
+        let state = app
+            .add_popup_state
+            .as_mut()
+            .expect("add popup should be initialized");
+        state.current_input = ICON_FIELD_IDX;
+        state.sync_cursor(ICON_FIELD_IDX);
+
+        app.handlekeys_add_popup(Input {
+            key: Key::Char('q'),
+            ..Default::default()
+        });
+
+        let state = app
+            .add_popup_state
+            .as_ref()
+            .expect("add popup should remain open");
+        assert_eq!(state.inputs[ICON_FIELD_IDX].lines().join(""), "q");
+        assert!(
+            !app.should_quit,
+            "typing q in add popup should not quit app"
+        );
     }
 }

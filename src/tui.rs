@@ -8,7 +8,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Frame, Terminal, backend::CrosstermBackend, layout::Constraint};
-use std::io;
+use std::{io, time::Duration};
 use tui_textarea::{Input, Key};
 
 pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
@@ -23,20 +23,21 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
 
-        match ratatui::crossterm::event::read()?.into() {
-            Input {
-                key: Key::Char('q'),
-                ..
+        if ratatui::crossterm::event::poll(Duration::from_millis(16))? {
+            match ratatui::crossterm::event::read()?.into() {
+                Input {
+                    key: Key::Char('c'),
+                    ctrl: true,
+                    ..
+                } => break,
+                input => app.handlekeys(input),
             }
-            | Input {
-                key: Key::Char('c'),
-                ctrl: true,
-                ..
-            } => break,
-            input => app.handlekeys(input),
         }
 
         app.update();
+        if app.should_quit {
+            break;
+        }
     }
 
     disable_raw_mode()?;
@@ -68,6 +69,9 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppFocus::DeletePopup => crate::views::delete_popup::render_delete_popup(f, app),
         AppFocus::RenamePopup => crate::views::rename_popup::render_rename_popup(f, app),
         AppFocus::HelpPopup => crate::views::help_popup::render_help_popup(f, app),
+        AppFocus::IconifySearchPopup => {
+            crate::views::iconify_search_popup::render_iconify_search_popup(f, app)
+        }
         _ => {}
     }
 }

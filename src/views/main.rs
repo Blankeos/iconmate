@@ -1,8 +1,8 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -99,6 +99,9 @@ impl MainState {
             Key::Char('q') => app.should_quit = true,
             Key::Char('a') => {
                 app.init_add_popup();
+            }
+            Key::Char('i') => {
+                app.init_iconify_search_popup();
             }
             Key::Char('d') => {
                 app.init_delete_popup();
@@ -339,7 +342,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
     f.render_stateful_widget(table, main_chunks[4], &mut state);
 
     let instructions =
-        "a Add | d Delete | r Rename | o Open | / Search | ? Help | q Quit | Up/Down (j/k)";
+        "a Add | i Iconify | d Delete | r Rename | o Open | / Search | ? Help | q Quit | Up/Down";
     let version_label = format!("iconmate v{}", env!("CARGO_PKG_VERSION"));
     let footer_layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Horizontal)

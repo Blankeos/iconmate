@@ -85,10 +85,11 @@ pub fn render_help_popup(f: &mut Frame, app: &App) {
     .style(Style::default().fg(Color::White));
     f.render_widget(status, layout[1]);
 
-    let divider =
-        Paragraph::new("a Add | d Delete | r Rename | o Open | / Search | ? Help | q Quit")
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::DarkGray));
+    let divider = Paragraph::new(
+        "a Add | i Iconify Search | d Delete | r Rename | o Open | / Search | ? Help | q Quit",
+    )
+    .alignment(Alignment::Center)
+    .style(Style::default().fg(Color::DarkGray));
     f.render_widget(divider, layout[3]);
 
     let nav = Paragraph::new("r Rename file path (alias stays the same)")

@@ -1,5 +1,8 @@
 use crate::{utils::IconEntry, views::main::MainState};
-use std::sync::mpsc::Receiver;
+use std::{
+    path::PathBuf,
+    sync::mpsc::{Receiver, Sender},
+};
 use tui_textarea::Input;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -9,6 +12,42 @@ pub enum AppFocus {
     DeletePopup,
     RenamePopup,
     HelpPopup,
+    IconifySearchPopup,
+}
+
+#[derive(Debug, Clone)]
+pub struct IconifyCollectionListItem {
+    pub prefix: String,
+    pub name: String,
+    pub total: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IconifySearchPayload {
+    pub icons: Vec<String>,
+}
+
+#[derive(Debug)]
+pub enum AppEvent {
+    IconifyCollectionsLoaded {
+        request_id: u64,
+        result: Result<Vec<IconifyCollectionListItem>, String>,
+    },
+    IconifySearchLoaded {
+        request_id: u64,
+        query: String,
+        result: Result<IconifySearchPayload, String>,
+    },
+    IconifyCollectionIconsLoaded {
+        request_id: u64,
+        prefix: String,
+        result: Result<Vec<String>, String>,
+    },
+    IconifyPreviewOpened {
+        icon_name: String,
+        temp_file: Option<PathBuf>,
+        result: Result<crate::viewer::OpenSvgOutcome, String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +65,8 @@ pub struct App {
     pub config: AppConfig,
 
     // App state
-    pub rx: Receiver<()>,
+    pub tx: Sender<AppEvent>,
+    pub rx: Receiver<AppEvent>,
 
     pub should_quit: bool,
 
@@ -43,15 +83,20 @@ pub struct App {
     pub add_popup_state: Option<crate::views::add_popup::AddPopupState>,
     pub delete_popup_state: Option<crate::views::delete_popup::DeletePopupState>,
     pub rename_popup_state: Option<crate::views::rename_popup::RenamePopupState>,
+    pub iconify_search_popup_state:
+        Option<crate::views::iconify_search_popup::IconifySearchPopupState>,
+
+    pub next_async_request_id: u64,
 }
 
 impl App {
     pub fn new(config: AppConfig) -> Self {
-        let (_tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel();
         let mut app = Self {
             config,
 
             should_quit: false,
+            tx,
             rx: rx,
 
             selected_index: 0,
@@ -62,6 +107,8 @@ impl App {
             add_popup_state: None,
             delete_popup_state: None,
             rename_popup_state: None,
+            iconify_search_popup_state: None,
+            next_async_request_id: 0,
             main_state: MainState::new(),
         };
 
@@ -78,7 +125,13 @@ impl App {
         self.filtered_items = self.items.clone();
     }
 
-    pub fn update(&mut self) {}
+    pub fn update(&mut self) {
+        while let Ok(event) = self.rx.try_recv() {
+            self.handle_app_event(event);
+        }
+
+        self.tick_iconify_search_popup();
+    }
 
     pub fn handlekeys(&mut self, key: Input) {
         match self.app_focus {
@@ -87,6 +140,7 @@ impl App {
             AppFocus::DeletePopup => self.handlekeys_delete_popup(key),
             AppFocus::RenamePopup => self.handlekeys_rename_popup(key),
             AppFocus::HelpPopup => self.handlekeys_help_popup(key),
+            AppFocus::IconifySearchPopup => self.handlekeys_iconify_search_popup(key),
         }
     }
 }
