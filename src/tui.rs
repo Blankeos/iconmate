@@ -11,8 +11,20 @@ use ratatui::{Frame, Terminal, backend::CrosstermBackend, layout::Constraint};
 use std::{io, time::Duration};
 use tui_textarea::{Input, Key};
 
+struct TerminalCleanupGuard;
+
+impl Drop for TerminalCleanupGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+    }
+}
+
 pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
+    let _cleanup = TerminalCleanupGuard;
+
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
@@ -40,12 +52,6 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
         }
     }
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
     terminal.show_cursor()?;
 
     Ok(())

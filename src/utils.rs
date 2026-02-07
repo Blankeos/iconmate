@@ -535,21 +535,37 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
             // Create the normalized relative path for comparison
             let normalized_relative_path = normalize_icon_relative_path(relative_path);
             // Remove all lines that export this file
-            let mut lines_to_keep = Vec::new();
+            let mut lines_to_keep = Vec::<String>::new();
             let mut found_export = false;
 
             for line in contents.lines() {
-                let should_remove = parse_export_line_ts(line)
-                    .map(|entry| {
-                        normalize_icon_relative_path(&entry.file_path) == normalized_relative_path
-                    })
-                    .unwrap_or(false);
+                let mut parsed_export_in_line = false;
 
-                if should_remove {
-                    found_export = true;
-                    continue; // Skip this line (remove it)
+                for statement in line.split(';') {
+                    let statement = statement.trim();
+                    if statement.is_empty() {
+                        continue;
+                    }
+
+                    let Some(entry) = parse_export_line_ts(statement) else {
+                        continue;
+                    };
+
+                    parsed_export_in_line = true;
+                    let should_remove =
+                        normalize_icon_relative_path(&entry.file_path) == normalized_relative_path;
+
+                    if should_remove {
+                        found_export = true;
+                        continue;
+                    }
+
+                    lines_to_keep.push(format!("{statement};"));
                 }
-                lines_to_keep.push(line);
+
+                if !parsed_export_in_line {
+                    lines_to_keep.push(line.to_string());
+                }
             }
 
             if found_export {
@@ -591,6 +607,44 @@ fn split_import_path_suffix(value: &str) -> (&str, &str) {
         Some(index) => (&value[..index], &value[index..]),
         None => (value, ""),
     }
+}
+
+fn replace_import_path_in_export_statement(
+    statement: &str,
+    current_relative_path: &str,
+    new_relative_path: &str,
+) -> Option<String> {
+    let from_pos = statement.find("from ")?;
+    let path_start_search = from_pos + "from ".len();
+    let statement_after_from = &statement[path_start_search..];
+    let first_quote_offset = statement_after_from.find(['"', '\''])?;
+    let first_quote_idx = path_start_search + first_quote_offset;
+    let quote_char = statement.as_bytes()[first_quote_idx] as char;
+    let path_start_idx = first_quote_idx + 1;
+    let second_quote_offset = statement[path_start_idx..].find(quote_char)?;
+    let path_end_idx = path_start_idx + second_quote_offset;
+    let matched_path = &statement[path_start_idx..path_end_idx];
+    let (matched_base_path, matched_suffix) = split_import_path_suffix(matched_path);
+
+    if normalize_icon_relative_path(matched_base_path) != current_relative_path {
+        return None;
+    }
+
+    let with_dot_prefix = matched_base_path.starts_with("./");
+    let replacement_path = if with_dot_prefix {
+        format!("./{}", new_relative_path)
+    } else {
+        new_relative_path.to_string()
+    };
+
+    Some(format!(
+        "{}{}{}{}{}",
+        &statement[..path_start_idx],
+        replacement_path,
+        matched_suffix,
+        quote_char,
+        &statement[path_end_idx + 1..]
+    ))
 }
 
 pub fn rename_icon_entry(
@@ -653,45 +707,37 @@ pub fn rename_icon_entry(
 
     let index_contents = fs::read_to_string(&index_path)?;
     let mut replaced_count = 0usize;
-    let mut updated_lines = Vec::new();
+    let mut updated_lines = Vec::<String>::new();
     for line in index_contents.lines() {
-        if let Some(from_pos) = line.find("from ") {
-            let path_start_search = from_pos + "from ".len();
-            let line_after_from = &line[path_start_search..];
-            if let Some(first_quote_offset) = line_after_from.find(|c| c == '"' || c == '\'') {
-                let first_quote_idx = path_start_search + first_quote_offset;
-                let quote_char = line.as_bytes()[first_quote_idx] as char;
-                let path_start_idx = first_quote_idx + 1;
-                if let Some(second_quote_offset) = line[path_start_idx..].find(quote_char) {
-                    let path_end_idx = path_start_idx + second_quote_offset;
-                    let matched_path = &line[path_start_idx..path_end_idx];
-                    let (matched_base_path, matched_suffix) =
-                        split_import_path_suffix(matched_path);
+        let mut parsed_export_in_line = false;
 
-                    if normalize_icon_relative_path(matched_base_path) == current_relative_path {
-                        let with_dot_prefix = matched_base_path.starts_with("./");
-                        let replacement_path = if with_dot_prefix {
-                            format!("./{}", new_relative_path)
-                        } else {
-                            new_relative_path.clone()
-                        };
-                        let updated_line = format!(
-                            "{}{}{}{}{}",
-                            &line[..path_start_idx],
-                            replacement_path,
-                            matched_suffix,
-                            quote_char,
-                            &line[path_end_idx + 1..]
-                        );
-                        updated_lines.push(updated_line);
-                        replaced_count += 1;
-                        continue;
-                    }
-                }
+        for statement in line.split(';') {
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
+            }
+
+            if parse_export_line_ts(statement).is_none() {
+                continue;
+            }
+
+            parsed_export_in_line = true;
+
+            if let Some(updated_statement) = replace_import_path_in_export_statement(
+                statement,
+                &current_relative_path,
+                &new_relative_path,
+            ) {
+                updated_lines.push(format!("{updated_statement};"));
+                replaced_count += 1;
+            } else {
+                updated_lines.push(format!("{statement};"));
             }
         }
 
-        updated_lines.push(line.to_string());
+        if !parsed_export_in_line {
+            updated_lines.push(line.to_string());
+        }
     }
 
     if replaced_count == 0 {
@@ -1045,5 +1091,73 @@ mod tests {
             std::fs::read_to_string(&index_path).expect("index.ts should be readable");
         assert!(!updated_index.contains("IconDarkTheme24Regular"));
         assert!(updated_index.contains("IconKeep"));
+    }
+
+    #[test]
+    fn delete_icon_entry_removes_target_from_concatenated_export_line() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let keep_file = icons_folder.join("keep.svg");
+        let remove_file = icons_folder.join("remove.svg");
+        std::fs::write(&keep_file, "<svg></svg>").expect("keep icon should be created");
+        std::fs::write(&remove_file, "<svg></svg>").expect("remove icon should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconKeep } from './keep.svg';export { default as IconRemove } from './remove.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        delete_icon_entry(remove_file.to_string_lossy().as_ref())
+            .expect("delete should remove export from concatenated line");
+
+        let updated_index =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(updated_index.contains("IconKeep"));
+        assert!(!updated_index.contains("IconRemove"));
+    }
+
+    #[test]
+    fn renames_target_from_concatenated_export_line() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let keep_file = icons_folder.join("keep.svg");
+        let rename_file = icons_folder.join("rename.svg");
+        std::fs::write(&keep_file, "<svg></svg>").expect("keep icon should be created");
+        std::fs::write(&rename_file, "<svg></svg>").expect("rename icon should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconKeep } from './keep.svg';export { default as IconRename } from './rename.svg?react#hash';\n",
+        )
+        .expect("index.ts should be created");
+
+        rename_icon_entry(
+            icons_folder.to_string_lossy().as_ref(),
+            "./rename.svg",
+            "renamed.svg",
+        )
+        .expect("rename should update export from concatenated line");
+
+        assert!(!rename_file.exists(), "old file should be removed");
+        assert!(
+            icons_folder.join("renamed.svg").exists(),
+            "renamed file should exist"
+        );
+
+        let index_contents =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(index_contents.contains("IconKeep"));
+        assert!(
+            index_contents
+                .contains("export { default as IconRename } from './renamed.svg?react#hash';"),
+            "index.ts should keep suffix while updating path"
+        );
     }
 }

@@ -167,8 +167,8 @@ fn test_add_command_appends_after_non_newline_terminated_index() {
 }
 
 #[test]
-fn test_add_command_duplicate_icon() {
-    // Test adding the same icon twice
+fn test_add_command_rejects_duplicate_icon() {
+    // Test adding the same icon twice now fails on conflict
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let test_folder = temp_dir.path().join("src/assets/icons");
 
@@ -180,10 +180,12 @@ fn test_add_command_duplicate_icon() {
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
-            "--icon",
-            "heroicons:heart",
+            "--preset",
+            "emptysvg",
             "--name",
             "Heart",
+            "--filename",
+            "heart",
         ])
         .current_dir(temp_dir.path())
         .output()
@@ -197,18 +199,24 @@ fn test_add_command_duplicate_icon() {
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
-            "--icon",
-            "heroicons:heart",
+            "--preset",
+            "emptysvg",
             "--name",
             "Heart",
+            "--filename",
+            "heart",
         ])
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute second command");
 
-    assert!(output2.status.success(), "Second command should succeed");
+    assert!(!output2.status.success(), "Second command should fail");
+    assert!(
+        String::from_utf8_lossy(&output2.stderr).contains("already exists"),
+        "stderr should explain export/file conflict"
+    );
 
-    // Verify only one export exists (no duplicates)
+    // Verify only one export exists
     let index_file = test_folder.join("index.ts");
     let index_content = std::fs::read_to_string(&index_file).expect("Failed to read index.ts");
 
@@ -216,6 +224,113 @@ fn test_add_command_duplicate_icon() {
         .matches("export { default as IconHeart }")
         .count();
     assert_eq!(heart_exports, 1, "Should only have one Heart export");
+}
+
+#[test]
+fn test_add_command_rejects_duplicate_name_with_different_target() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let first = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "emptysvg",
+            "--name",
+            "Heart",
+            "--filename",
+            "heart-a",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute first command");
+    assert!(first.status.success(), "First command should succeed");
+
+    let second = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "emptysvg",
+            "--name",
+            "Heart",
+            "--filename",
+            "heart-b",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute second command");
+
+    assert!(
+        !second.status.success(),
+        "Second command should fail on duplicate export alias"
+    );
+    assert!(
+        String::from_utf8_lossy(&second.stderr).contains("Icon alias"),
+        "stderr should mention duplicate alias"
+    );
+
+    assert!(!test_folder.join("heart-b.svg").exists());
+}
+
+#[test]
+fn test_add_command_rejects_duplicate_target_with_different_name() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let first = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "emptysvg",
+            "--name",
+            "Heart",
+            "--filename",
+            "shared-target",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute first command");
+    assert!(first.status.success(), "First command should succeed");
+
+    let second = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "emptysvg",
+            "--name",
+            "Star",
+            "--filename",
+            "shared-target",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute second command");
+
+    assert!(
+        !second.status.success(),
+        "Second command should fail on duplicate export target"
+    );
+    assert!(
+        String::from_utf8_lossy(&second.stderr).contains("Export target"),
+        "stderr should mention duplicate export target"
+    );
+
+    let index_file = test_folder.join("index.ts");
+    let index_content = std::fs::read_to_string(&index_file).expect("Failed to read index.ts");
+    assert!(index_content.contains("IconHeart"));
+    assert!(!index_content.contains("IconStar"));
 }
 
 #[tokio::test]
