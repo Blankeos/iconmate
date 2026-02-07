@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmateglobal.schema.json",
+  "type": "object",
+  "properties": {
+    "svg_view_cmd": {
+      "type": "string",
+      "minLength": 1,
+      "title": "SVG View Command",
+      "description": "Command used to open an SVG. Supports `%filename%` placeholder, for example: `zed %filename%`.",
+      "examples": [
+        "zed %filename%",
+        "code %filename%",
+        "open %filename%"
+      ]
+    }
+  },
+  "id": "IconmateGlobalConfig",
+  "title": "Iconmate Global Config",
+  "description": "Schema for user-level iconmate config at the OS-specific config directory."
+}

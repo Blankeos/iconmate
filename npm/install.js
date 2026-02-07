@@ -4,8 +4,6 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const { pipeline } = require("stream");
-const { promisify } = require("util");
 
 // Version should match your Rust crate version
 const VERSION = require("./package.json").version;
@@ -91,13 +89,22 @@ function extractArchive(archivePath, extractDir, platformInfo) {
 
   const cmd =
     platformInfo.extension === ".zip"
-      ? `unzip -o "${archivePath}" -d "${extractDir}" 2>/dev/null || powershell -command \"Expand-Archive -Path '${archivePath}' -DestinationPath '${extractDir}' -Force\"`
+      ? `unzip -o "${archivePath}" -d "${extractDir}" 2>/dev/null || powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${extractDir}' -Force"`
       : `tar -xf "${archivePath}" -C "${extractDir}"`;
 
   execSync(cmd, { stdio: "inherit" });
 }
 
-async function install() {
+function logInstallFailure(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("❌ Installation failed:", message);
+  console.error("\nYou can install iconmate directly using:");
+  console.error(
+    'curl --proto "=https" --tlsv1.2 -LsSf https://github.com/Blankeos/iconmate/releases/latest/download/iconmate-installer.sh | sh',
+  );
+}
+
+async function install({ exitOnComplete = false } = {}) {
   try {
     const platformInfo = getPlatformInfo();
     const binDir = path.join(__dirname, "bin");
@@ -132,20 +139,28 @@ async function install() {
 
     fs.unlinkSync(archivePath);
     console.log(`✅ iconmate v${VERSION} installed successfully!`);
-    process.exit(0);
+
+    if (exitOnComplete) {
+      process.exit(0);
+      return binaryPath;
+    }
+
+    return binaryPath;
   } catch (error) {
-    console.error("❌ Installation failed:", error.message);
-    console.error("\\nYou can install iconmate directly using:");
-    console.error(
-      'curl --proto \"=https\" --tlsv1.2 -LsSf https://github.com/Blankeos/iconmate/releases/latest/download/iconmate-installer.sh | sh',
-    );
-    process.exit(1);
+    logInstallFailure(error);
+
+    if (exitOnComplete) {
+      process.exit(1);
+      return;
+    }
+
+    throw error;
   }
 }
 
 // Only run install if this script is executed directly
 if (require.main === module) {
-  install();
+  install({ exitOnComplete: true });
 }
 
-module.exports = { getPlatformInfo };
+module.exports = { getPlatformInfo, install };

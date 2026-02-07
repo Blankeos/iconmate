@@ -1,0 +1,4 @@
+{
+  "$schema": "./iconmatelocal.schema.json",
+  "svg_view_cmd": "zed %filename%",
+}

@@ -12,7 +12,7 @@ fn test_add_command_creates_folder_and_files() {
 
     // Run the iconmate add command
     let output = Command::new(binary_path)
-        .args(&[
+        .args([
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
@@ -81,7 +81,7 @@ fn test_add_command_with_existing_folder() {
 
     // Run the iconmate add command
     let output = Command::new(binary_path)
-        .args(&[
+        .args([
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
@@ -115,6 +115,58 @@ fn test_add_command_with_existing_folder() {
 }
 
 #[test]
+fn test_add_command_appends_after_non_newline_terminated_index() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    std::fs::create_dir_all(&test_folder).expect("Failed to create test folder");
+
+    let existing_index = test_folder.join("index.ts");
+    std::fs::write(
+        &existing_index,
+        "export { default as IconExisting } from './existing.svg';",
+    )
+    .expect("Failed to create existing index.ts");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let output = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "emptysvg",
+            "--name",
+            "Fresh",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Command failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let index_content = std::fs::read_to_string(&existing_index).expect("Failed to read index.ts");
+
+    assert!(
+        index_content.contains("export { default as IconExisting } from './existing.svg';\n"),
+        "existing export should end with a newline before appending"
+    );
+    assert!(
+        index_content.contains("export { default as IconFresh } from './fresh.svg';"),
+        "index.ts should contain the new export"
+    );
+    assert!(
+        !index_content.contains("existing.svg';export"),
+        "new export should not be concatenated on the same line"
+    );
+}
+
+#[test]
 fn test_add_command_duplicate_icon() {
     // Test adding the same icon twice
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
@@ -124,7 +176,7 @@ fn test_add_command_duplicate_icon() {
 
     // First add
     let output1 = Command::new(binary_path)
-        .args(&[
+        .args([
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
@@ -141,7 +193,7 @@ fn test_add_command_duplicate_icon() {
 
     // Second add of the same icon
     let output2 = Command::new(binary_path)
-        .args(&[
+        .args([
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
@@ -175,7 +227,7 @@ async fn test_add_command_invalid_icon() {
     let binary_path = env!("CARGO_BIN_EXE_iconmate");
 
     let output = Command::new(binary_path)
-        .args(&[
+        .args([
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
@@ -204,7 +256,7 @@ fn test_add_command_preset_empty_svg() {
     let binary_path = env!("CARGO_BIN_EXE_iconmate");
 
     let output = Command::new(binary_path)
-        .args(&[
+        .args([
             "add",
             "--folder",
             test_folder.to_str().unwrap(),
@@ -236,5 +288,67 @@ fn test_add_command_preset_empty_svg() {
     assert!(
         svg_content.contains(r#"svg xmlns="http://www.w3.org/2000/svg""#),
         "SVG should contain the empty SVG template"
+    );
+}
+
+#[test]
+fn test_add_command_preset_normal_with_icon() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let output = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "normal",
+            "--icon",
+            "heroicons:heart",
+            "--name",
+            "Heart",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Command failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let svg_file = test_folder.join("heroicons:heart.svg");
+    assert!(svg_file.exists(), "heroicons:heart.svg should be created");
+}
+
+#[test]
+fn test_add_command_preset_normal_requires_icon() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let output = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "normal",
+            "--name",
+            "NoIcon",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success(), "Command should fail without icon");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--icon argument is required when --preset is normal"),
+        "stderr should explain normal preset needs an icon"
     );
 }
