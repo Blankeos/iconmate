@@ -1,8 +1,11 @@
 use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-    path::PathBuf,
+    borrow::Cow,
     time::{Duration, Instant},
+};
+
+use nucleo_matcher::{
+    Config, Matcher,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 
 use ratatui::{
@@ -21,6 +24,72 @@ use crate::{
 
 const SEARCH_DEBOUNCE_MS: u64 = 280;
 const SEARCH_LIMIT: u32 = 80;
+
+#[derive(Debug, Clone)]
+struct FuzzyCandidate<'a> {
+    index: usize,
+    haystack: Cow<'a, str>,
+}
+
+impl AsRef<str> for FuzzyCandidate<'_> {
+    fn as_ref(&self) -> &str {
+        &self.haystack
+    }
+}
+
+fn fuzzy_rank_indices(query: &str, candidates: Vec<FuzzyCandidate<'_>>) -> Vec<usize> {
+    if query.trim().is_empty() {
+        return candidates
+            .into_iter()
+            .map(|candidate| candidate.index)
+            .collect();
+    }
+
+    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let mut matched = pattern.match_list(candidates, &mut matcher);
+    matched.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.index.cmp(&b.0.index)));
+
+    matched
+        .into_iter()
+        .map(|(candidate, _)| candidate.index)
+        .collect()
+}
+
+fn fuzzy_filter_collections(
+    collections: &[IconifyCollectionListItem],
+    query: &str,
+) -> Vec<IconifyCollectionListItem> {
+    let candidates = collections
+        .iter()
+        .enumerate()
+        .map(|(index, item)| FuzzyCandidate {
+            index,
+            haystack: Cow::Owned(format!("{} {}", item.prefix, item.name)),
+        })
+        .collect::<Vec<_>>();
+
+    fuzzy_rank_indices(query, candidates)
+        .into_iter()
+        .map(|index| collections[index].clone())
+        .collect()
+}
+
+fn fuzzy_filter_icons(icons: &[String], query: &str) -> Vec<String> {
+    let candidates = icons
+        .iter()
+        .enumerate()
+        .map(|(index, icon)| FuzzyCandidate {
+            index,
+            haystack: Cow::Borrowed(icon.as_str()),
+        })
+        .collect::<Vec<_>>();
+
+    fuzzy_rank_indices(query, candidates)
+        .into_iter()
+        .map(|index| icons[index].clone())
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IconifySearchTab {
@@ -55,12 +124,9 @@ pub struct IconifySearchPopupState {
     pub is_loading_collections: bool,
     pub is_loading_search: bool,
     pub is_loading_collection_icons: bool,
-    pub is_opening_preview: bool,
 
     pub status_message: Option<String>,
     pub status_is_error: bool,
-
-    pub preview_cache: HashMap<String, PathBuf>,
 }
 
 impl IconifySearchPopupState {
@@ -86,10 +152,8 @@ impl IconifySearchPopupState {
             is_loading_collections: false,
             is_loading_search: false,
             is_loading_collection_icons: false,
-            is_opening_preview: false,
             status_message: None,
             status_is_error: false,
-            preview_cache: HashMap::new(),
         }
     }
 
@@ -102,21 +166,13 @@ impl IconifySearchPopupState {
     }
 
     fn refresh_filtered_collections(&mut self) {
-        let query = self.search_value.trim().to_lowercase();
+        let query = self.search_value.trim();
         if query.is_empty() {
             self.filtered_collections.clear();
             return;
         }
 
-        self.filtered_collections = self
-            .all_collections
-            .iter()
-            .filter(|item| {
-                item.prefix.to_lowercase().contains(&query)
-                    || item.name.to_lowercase().contains(&query)
-            })
-            .cloned()
-            .collect();
+        self.filtered_collections = fuzzy_filter_collections(&self.all_collections, query);
     }
 
     fn sync_search_dispatch_state(&mut self) {
@@ -124,7 +180,10 @@ impl IconifySearchPopupState {
         self.debounce_deadline = None;
 
         let query = self.search_value.trim().to_string();
-        if query.is_empty() || self.active_tab != IconifySearchTab::Icons {
+        if query.is_empty()
+            || self.active_tab != IconifySearchTab::Icons
+            || self.selected_collection_filter.is_some()
+        {
             self.is_loading_search = false;
             return;
         }
@@ -207,18 +266,17 @@ impl IconifySearchPopupState {
 
     fn refresh_visible_icons(&mut self) {
         if let Some(prefix) = &self.selected_collection_filter {
-            if !self.search_value.trim().is_empty() {
-                let prefix_filter = format!("{prefix}:");
-                self.visible_icons = self
-                    .search_icons
-                    .iter()
-                    .filter(|icon| icon.starts_with(&prefix_filter))
-                    .cloned()
-                    .collect();
-            } else if self.collection_icons_prefix.as_deref() == Some(prefix.as_str()) {
+            if self.collection_icons_prefix.as_deref() != Some(prefix.as_str()) {
+                self.visible_icons.clear();
+                self.clamp_icon_selection();
+                return;
+            }
+
+            let query = self.search_value.trim();
+            if query.is_empty() {
                 self.visible_icons = self.collection_icons.clone();
             } else {
-                self.visible_icons.clear();
+                self.visible_icons = fuzzy_filter_icons(&self.collection_icons, query);
             }
         } else {
             self.visible_icons = self.search_icons.clone();
@@ -255,7 +313,7 @@ enum PopupAction {
     Close,
     OpenCollection(String),
     FillAddPopup(String),
-    OpenIconPreview(String),
+    OpenIconInBrowser(String),
 }
 
 impl App {
@@ -296,11 +354,11 @@ impl App {
                     }
                     state.sync_search_dispatch_state();
                 }
-                Key::Up | Key::Char('k') => match state.active_tab {
+                Key::Up => match state.active_tab {
                     IconifySearchTab::Collections => state.move_collection_selection(-1),
                     IconifySearchTab::Icons => state.move_icon_selection(-1),
                 },
-                Key::Down | Key::Char('j') => match state.active_tab {
+                Key::Down => match state.active_tab {
                     IconifySearchTab::Collections => state.move_collection_selection(1),
                     IconifySearchTab::Icons => state.move_icon_selection(1),
                 },
@@ -322,7 +380,7 @@ impl App {
                 Key::Char('o') if input.ctrl => {
                     if state.active_tab == IconifySearchTab::Icons {
                         if let Some(icon_name) = state.selected_icon_name() {
-                            action = PopupAction::OpenIconPreview(icon_name);
+                            action = PopupAction::OpenIconInBrowser(icon_name);
                         } else {
                             state.set_status("No icon selected.".to_string(), true);
                         }
@@ -343,15 +401,17 @@ impl App {
                 self.close_iconify_search_popup();
                 self.init_add_popup_with_icon_source(&icon_name);
             }
-            PopupAction::OpenIconPreview(icon_name) => {
-                self.open_icon_preview(icon_name);
+            PopupAction::OpenIconInBrowser(icon_name) => {
+                self.open_icon_browser_preview(icon_name);
             }
         }
     }
 
     pub fn tick_iconify_search_popup(&mut self) {
         let query_to_dispatch = self.iconify_search_popup_state.as_ref().and_then(|state| {
-            if state.active_tab != IconifySearchTab::Icons {
+            if state.active_tab != IconifySearchTab::Icons
+                || state.selected_collection_filter.is_some()
+            {
                 return None;
             }
 
@@ -407,6 +467,13 @@ impl App {
                         return;
                     }
 
+                    if state.active_tab != IconifySearchTab::Icons
+                        || state.selected_collection_filter.is_some()
+                    {
+                        state.is_loading_search = false;
+                        return;
+                    }
+
                     state.is_loading_search = false;
 
                     match result {
@@ -452,8 +519,15 @@ impl App {
                             state.collection_icons = icons;
                             state.refresh_visible_icons();
 
-                            if state.visible_icons.is_empty() {
+                            if state.collection_icons.is_empty() {
                                 state.set_status("No icons in this collection.".to_string(), false);
+                            } else if !state.search_value.trim().is_empty()
+                                && state.visible_icons.is_empty()
+                            {
+                                state.set_status(
+                                    "No matching icons in this collection.".to_string(),
+                                    false,
+                                );
                             } else {
                                 state.clear_status();
                             }
@@ -463,50 +537,6 @@ impl App {
                             state.collection_icons_prefix = None;
                             state.refresh_visible_icons();
                             state.set_status(error, true);
-                        }
-                    }
-                }
-            }
-            AppEvent::IconifyPreviewOpened {
-                icon_name,
-                temp_file,
-                result,
-            } => {
-                if let Some(state) = self.iconify_search_popup_state.as_mut() {
-                    state.is_opening_preview = false;
-
-                    match result {
-                        Ok(outcome) => {
-                            if let Some(path) = temp_file {
-                                state.preview_cache.insert(icon_name, path);
-                            }
-
-                            match outcome {
-                                crate::viewer::OpenSvgOutcome::OpenedWithCustomCommand => {
-                                    state.set_status("Opened icon preview.".to_string(), false)
-                                }
-                                crate::viewer::OpenSvgOutcome::OpenedWithOsDefault => {
-                                    state.set_status("Opened icon preview.".to_string(), false)
-                                }
-                                crate::viewer::OpenSvgOutcome::OpenedWithOsDefaultAfterCustomFailure => {
-                                    state.set_status(
-                                        "svg_viewer_cmd failed; opened preview via OS default"
-                                            .to_string(),
-                                        false,
-                                    )
-                                }
-                                crate::viewer::OpenSvgOutcome::OpenedWithWebPreview(url) => {
-                                    state.set_status(
-                                        format!(
-                                            "Local open failed; opened Iconify web preview: {url}"
-                                        ),
-                                        false,
-                                    )
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            state.set_status(format!("Failed to open preview: {error}"), true);
                         }
                     }
                 }
@@ -560,6 +590,14 @@ impl App {
             return;
         };
 
+        if state.active_tab != IconifySearchTab::Icons || state.selected_collection_filter.is_some()
+        {
+            state.pending_search_query = None;
+            state.debounce_deadline = None;
+            state.is_loading_search = false;
+            return;
+        }
+
         state.pending_search_query = None;
         state.debounce_deadline = None;
         state.latest_search_request_id = request_id;
@@ -596,13 +634,12 @@ impl App {
             state.selected_collection_filter = Some(prefix.clone());
             state.selected_icon_index = 0;
             state.refresh_visible_icons();
+            state.sync_search_dispatch_state();
 
-            if state.search_value.trim().is_empty() {
-                should_fetch = state.collection_icons_prefix.as_deref() != Some(prefix.as_str());
-                if should_fetch {
-                    state.collection_icons.clear();
-                    state.refresh_visible_icons();
-                }
+            should_fetch = state.collection_icons_prefix.as_deref() != Some(prefix.as_str());
+            if should_fetch {
+                state.collection_icons.clear();
+                state.refresh_visible_icons();
             }
         }
 
@@ -647,97 +684,41 @@ impl App {
         });
     }
 
-    fn open_icon_preview(&mut self, icon_name: String) {
-        let cached_path = self
-            .iconify_search_popup_state
-            .as_ref()
-            .and_then(|state| state.preview_cache.get(&icon_name).cloned())
-            .filter(|path| path.exists());
+    fn open_icon_browser_preview(&mut self, icon_name: String) {
+        let Some(url) = icones_collection_url(&icon_name) else {
+            if let Some(state) = self.iconify_search_popup_state.as_mut() {
+                state.set_status(
+                    format!("Cannot open Icones page for invalid icon name '{icon_name}'."),
+                    true,
+                );
+            }
+            return;
+        };
 
         if let Some(state) = self.iconify_search_popup_state.as_mut() {
-            state.is_opening_preview = true;
-            if cached_path.is_some() {
-                state.set_status(
-                    format!("Opening cached preview for '{icon_name}'..."),
-                    false,
-                );
-            } else {
-                state.set_status(format!("Downloading preview for '{icon_name}'..."), false);
-            }
+            state.set_status("Opening icon in browser...".to_string(), false);
         }
 
-        let tx = self.tx.clone();
-        let viewer_cmd = self.config.svg_viewer_cmd.clone();
-
-        tokio::spawn(async move {
-            let operation = async {
-                if let Some(path) = cached_path {
-                    let outcome =
-                        crate::viewer::open_svg_with_fallback(&path, viewer_cmd.as_deref())
-                            .map_err(|error| error.to_string())?;
-                    return Ok::<(crate::viewer::OpenSvgOutcome, Option<PathBuf>), String>((
-                        outcome, None,
-                    ));
-                }
-
-                let client = IconifyClient::from_env().map_err(|error| error.to_string())?;
-                let svg = client
-                    .svg(&icon_name)
-                    .await
-                    .map_err(|error| error.to_string())?;
-                let path = icon_preview_temp_path(&icon_name);
-
-                if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                std::fs::write(&path, svg).map_err(|error| error.to_string())?;
-
-                let outcome = crate::viewer::open_svg_with_fallback(&path, viewer_cmd.as_deref())
-                    .map_err(|error| error.to_string())?;
-
-                Ok((outcome, Some(path)))
-            }
-            .await;
-
-            match operation {
-                Ok((outcome, temp_file)) => {
-                    let _ = tx.send(AppEvent::IconifyPreviewOpened {
-                        icon_name,
-                        temp_file,
-                        result: Ok(outcome),
-                    });
-                }
-                Err(error) => {
-                    let _ = tx.send(AppEvent::IconifyPreviewOpened {
-                        icon_name,
-                        temp_file: None,
-                        result: Err(error),
-                    });
+        match crate::viewer::open_url_in_browser(&url) {
+            Ok(()) => {
+                if let Some(state) = self.iconify_search_popup_state.as_mut() {
+                    state.set_status(format!("Opened Icones page: {url}"), false);
                 }
             }
-        });
+            Err(error) => {
+                if let Some(state) = self.iconify_search_popup_state.as_mut() {
+                    state.set_status(format!("Failed to open browser: {error}"), true);
+                }
+            }
+        }
     }
 }
 
-fn icon_preview_temp_path(icon_name: &str) -> PathBuf {
-    let safe_stem: String = icon_name
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect();
-
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    icon_name.hash(&mut hasher);
-    let suffix = hasher.finish();
-
-    std::env::temp_dir()
-        .join("iconmate-preview")
-        .join(format!("{}-{suffix:x}.svg", safe_stem))
+fn icones_collection_url(icon_name: &str) -> Option<String> {
+    let (prefix, _) = icon_name.split_once(':')?;
+    Some(format!(
+        "https://icones.js.org/collection/{prefix}?icon={icon_name}"
+    ))
 }
 
 pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
@@ -842,9 +823,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
         }
     }
 
-    let loading_message = if state.is_opening_preview {
-        Some("Downloading/opening preview...")
-    } else if state.is_loading_collection_icons {
+    let loading_message = if state.is_loading_collection_icons {
         Some("Loading collection icons...")
     } else if state.is_loading_search {
         Some("Searching Iconify...")
@@ -871,10 +850,163 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
     let help_text = if state.active_tab == IconifySearchTab::Collections {
         "Tab switch tabs | Enter view icons | Up/Down move | Esc close"
     } else {
-        "Enter autofill Add popup | Ctrl+o open | Up/Down move | Tab switch | Esc close"
+        "Enter autofill Add popup | Ctrl+o open in browser | Up/Down move | Tab switch | Esc close"
     };
     let help = Paragraph::new(help_text)
         .alignment(Alignment::Left)
         .style(Style::default().fg(Color::DarkGray));
     f.render_widget(help, inner[4]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        IconifySearchPopupState, IconifySearchTab, fuzzy_filter_collections, fuzzy_filter_icons,
+        icones_collection_url,
+    };
+    use crate::app_state::{App, AppConfig, AppFocus, IconifyCollectionListItem};
+    use tempfile::TempDir;
+    use tui_textarea::{Input, Key};
+
+    fn test_app() -> App {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let folder = temp_dir.path().join("icons");
+
+        let config = AppConfig {
+            folder: folder.to_string_lossy().into_owned(),
+            preset: None,
+            template: None,
+            svg_viewer_cmd: None,
+            svg_viewer_cmd_source: "test".to_string(),
+            global_config_loaded: false,
+            project_config_loaded: false,
+        };
+
+        App::new(config)
+    }
+
+    #[test]
+    fn builds_icones_collection_url_for_iconify_name() {
+        assert_eq!(
+            icones_collection_url("lucide:bean"),
+            Some("https://icones.js.org/collection/lucide?icon=lucide:bean".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_for_invalid_icon_name() {
+        assert_eq!(icones_collection_url("bean"), None);
+    }
+
+    #[test]
+    fn fuzzy_collections_support_non_substring_queries() {
+        let collections = vec![
+            IconifyCollectionListItem {
+                prefix: "lucide".to_string(),
+                name: "Lucide Icons".to_string(),
+                total: Some(100),
+            },
+            IconifyCollectionListItem {
+                prefix: "mdi".to_string(),
+                name: "Material Design Icons".to_string(),
+                total: Some(100),
+            },
+        ];
+
+        let filtered = fuzzy_filter_collections(&collections, "lcd");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].prefix, "lucide");
+    }
+
+    #[test]
+    fn fuzzy_icon_filter_supports_non_substring_queries() {
+        let icons = vec![
+            "lucide:bean".to_string(),
+            "lucide:beaker".to_string(),
+            "lucide:home".to_string(),
+        ];
+
+        let filtered = fuzzy_filter_icons(&icons, "bn");
+        assert_eq!(filtered, vec!["lucide:bean".to_string()]);
+    }
+
+    #[test]
+    fn collection_icon_search_is_local_and_does_not_queue_remote_search() {
+        let mut app = test_app();
+        app.app_focus = AppFocus::IconifySearchPopup;
+
+        let mut state = IconifySearchPopupState::new();
+        state.active_tab = IconifySearchTab::Icons;
+        state.selected_collection_filter = Some("lucide".to_string());
+        state.collection_icons_prefix = Some("lucide".to_string());
+        state.collection_icons = vec![
+            "lucide:bean".to_string(),
+            "lucide:beaker".to_string(),
+            "lucide:home".to_string(),
+        ];
+        state.refresh_visible_icons();
+        app.iconify_search_popup_state = Some(state);
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('b'),
+            ..Default::default()
+        });
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('n'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup state should exist");
+        assert_eq!(state.search_value, "bn");
+        assert!(state.pending_search_query.is_none());
+        assert!(!state.is_loading_search);
+        assert_eq!(state.visible_icons, vec!["lucide:bean".to_string()]);
+    }
+
+    #[test]
+    fn global_icon_search_keeps_remote_query_flow() {
+        let mut app = test_app();
+        app.app_focus = AppFocus::IconifySearchPopup;
+
+        let mut state = IconifySearchPopupState::new();
+        state.active_tab = IconifySearchTab::Icons;
+        app.iconify_search_popup_state = Some(state);
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('h'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup state should exist");
+        assert_eq!(state.pending_search_query.as_deref(), Some("h"));
+        assert!(state.is_loading_search);
+    }
+
+    #[test]
+    fn j_and_k_type_into_search_input() {
+        let mut app = test_app();
+        app.app_focus = AppFocus::IconifySearchPopup;
+        app.iconify_search_popup_state = Some(IconifySearchPopupState::new());
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('j'),
+            ..Default::default()
+        });
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('k'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup state should exist");
+        assert_eq!(state.search_value, "jk");
+    }
 }

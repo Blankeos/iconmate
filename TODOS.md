@@ -43,27 +43,24 @@
 
 ## Add-flow product direction
 
-- [ ] During add: allow icon discovery using Iconify API inside TUI
+- [x] ~During add: allow icon discovery using Iconify API inside TUI~
   - Prototype inline query input + paginated result list.
   - Validate whether this beats copy/paste from icones.js.org.
   - Decide final UX based on keystroke count and speed.
 
-- [ ] Dedicated icon search interface (TUI)
-  - Build a collection picker + icon search + preview + select-to-fill flow.
-  - Reuse `iconify` module for data fetch and pagination.
-  - Wire selected result back into add form.
+- [x] Dedicated icon search interface (TUI)
+  - [x] Launch from Home (`i`) instead of starting inside Add popup.
+  - [x] Build collection picker + icon view with `Tab` switching and Up/Down navigation.
+  - [x] Use `/collections` for collections and local client-side collection filtering.
+  - [x] Run debounced icon `/search` only while the Icons tab is active.
+  - [x] `Enter` on collection clears search input and opens collection-scoped icon list.
+  - [x] `Enter` on icon opens Add popup with icon/name/filename prefilled (no auto-submit).
+  - [x] `Ctrl+o` in Icons downloads to temp and opens preview with loading/status feedback.
 
-- [ ] Search as standalone CLI for AI/tooling
+- [x] Search as standalone CLI for AI/tooling
   - Add machine-friendly command (JSON first).
   - Keep deterministic outputs and stable field names.
   - Acceptance: scriptable icon search with no interactive prompts.
-
-## Config surfaces
-
-- [ ] Local config file support (or package.json key)
-  - Decide one canonical local format first, then optional package.json bridge.
-  - Implement precedence with CLI flags and global config.
-  - Document with copy/paste examples.
 
 ## Notes
 

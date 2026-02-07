@@ -150,7 +150,7 @@ fn iconify_web_preview_url(svg_path: &Path) -> Option<String> {
     Some(format!("https://api.iconify.design/{encoded}.svg"))
 }
 
-fn open_url_in_browser(url: &str) -> anyhow::Result<()> {
+pub fn open_url_in_browser(url: &str) -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     {
         return spawn_background("open", &[url.to_string()]).context("Failed to open URL via open");

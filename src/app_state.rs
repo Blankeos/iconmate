@@ -1,8 +1,5 @@
 use crate::{utils::IconEntry, views::main::MainState};
-use std::{
-    path::PathBuf,
-    sync::mpsc::{Receiver, Sender},
-};
+use std::sync::mpsc::{Receiver, Sender};
 use tui_textarea::Input;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,11 +39,6 @@ pub enum AppEvent {
         request_id: u64,
         prefix: String,
         result: Result<Vec<String>, String>,
-    },
-    IconifyPreviewOpened {
-        icon_name: String,
-        temp_file: Option<PathBuf>,
-        result: Result<crate::viewer::OpenSvgOutcome, String>,
     },
 }
 
