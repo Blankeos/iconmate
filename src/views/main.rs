@@ -1,12 +1,12 @@
 use nucleo_matcher::{
-    Config, Matcher,
     pattern::{CaseMatching, Normalization, Pattern},
+    Config, Matcher,
 };
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Rect},
     style::Style,
     widgets::{Block, Paragraph},
+    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -400,7 +400,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &mut App) {
     .row_highlight_style(
         Style::default()
             .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
-            .fg(crate::views::theme::TEXT)
+            .fg(crate::views::theme::BASE_BG)
             .add_modifier(Modifier::BOLD),
     );
 

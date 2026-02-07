@@ -336,7 +336,7 @@ Contributions are welcome—pull requests for bug fixes, new framework presets, 
   - [x] Rename in the TUI (but recommended for you to just use the LSP to do it)
   - [x] A lot of TUI functionalities wokr
 - [x] `iconmate iconify --help` commands for AI to easily look for icons itself.
-- [ ] Search and add Iconify icons directly inside the TUI (no need to open https://icones.js.org).
+- [x] Search and add Iconify icons directly inside the TUI (no need to open https://icones.js.org).
 - [ ] Other frameworks i.e. --preset=flutter or Go/Rust GUI apps? (Not sure how they work yet though).
 - [ ] ~Zed or VSCode Extension~ (seems unnecessary now, it's just a CLI)
 

@@ -1,12 +1,12 @@
 use std::process::Command;
 
 use crate::app_state::{App, AppFocus};
-use crate::utils::{PRESETS_OPTIONS, Preset, PresetOption, popup_area};
-use ratatui::Frame;
+use crate::utils::{popup_area, Preset, PresetOption, PRESETS_OPTIONS};
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, ListItem, Paragraph};
+use ratatui::Frame;
 use tui_textarea::{Input, Key, TextArea};
 
 // Constants
@@ -458,11 +458,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
 
     if let Some(state) = &mut app.add_popup_state {
         let labels: Vec<String> = vec![
-            if state.preset_filter.is_empty() {
-                String::from("Preset")
-            } else {
-                format!("Preset filter: {}", state.preset_filter)
-            },
+            String::from("Preset"),
             String::from("Icon source (name, URL, SVG, or empty)"),
             String::from("Filename (auto keeps extension)"),
             String::from("Component name"),
@@ -498,19 +494,27 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         };
         if items.is_empty() {
             state_store.select(None);
-            items = vec![
-                ListItem::new("No presets found")
-                    .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT)),
-            ];
+            items = vec![ListItem::new("No presets found")
+                .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))];
         } else {
             state_store.select(Some(state.preset_index))
         };
 
         let (preset_bg, preset_title) = field_theme(state.current_input == PRESET_FIELD_IDX);
+        let preset_filter_hint = if state.preset_filter.is_empty() {
+            String::new()
+        } else {
+            format!("filter: {}", state.preset_filter)
+        };
         let list = ratatui::widgets::List::new(items)
             .block(
                 Block::default()
                     .title(labels[PRESET_FIELD_IDX].clone())
+                    .title(
+                        Line::from(preset_filter_hint)
+                            .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
+                            .alignment(Alignment::Right),
+                    )
                     .title_style(
                         Style::default()
                             .fg(preset_title)
@@ -522,7 +526,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             .highlight_style(
                 Style::default()
                     .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
-                    .fg(crate::views::theme::TEXT)
+                    .fg(crate::views::theme::BASE_BG)
                     .add_modifier(Modifier::BOLD),
             );
 

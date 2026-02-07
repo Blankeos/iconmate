@@ -768,7 +768,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
     let collections_style = if state.active_tab == IconifySearchTab::Collections {
         Style::default()
             .bg(crate::views::theme::TAB_BG_ACTIVE)
-            .fg(crate::views::theme::TEXT)
+            .fg(crate::views::theme::BASE_BG)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
@@ -778,7 +778,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
     let icons_style = if state.active_tab == IconifySearchTab::Icons {
         Style::default()
             .bg(crate::views::theme::TAB_BG_ACTIVE)
-            .fg(crate::views::theme::TEXT)
+            .fg(crate::views::theme::BASE_BG)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
@@ -863,7 +863,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                 .highlight_style(
                     Style::default()
                         .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
-                        .fg(crate::views::theme::TEXT)
+                        .fg(crate::views::theme::BASE_BG)
                         .add_modifier(Modifier::BOLD),
                 );
             f.render_stateful_widget(list, inner[3], &mut list_state);
@@ -917,7 +917,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                 .highlight_style(
                     Style::default()
                         .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
-                        .fg(crate::views::theme::TEXT)
+                        .fg(crate::views::theme::BASE_BG)
                         .add_modifier(Modifier::BOLD),
                 );
             f.render_stateful_widget(list, inner[3], &mut list_state);

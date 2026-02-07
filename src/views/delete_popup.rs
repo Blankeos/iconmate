@@ -1,9 +1,9 @@
 use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
-use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
+use ratatui::Frame;
 use tui_textarea::{Input, Key};
 
 #[derive(Debug)]
@@ -162,7 +162,7 @@ pub fn render_delete_popup(f: &mut Frame, app: &mut App) {
                     " Cancel ",
                     Style::default()
                         .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
-                        .fg(crate::views::theme::TEXT)
+                        .fg(crate::views::theme::BASE_BG)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" "),
