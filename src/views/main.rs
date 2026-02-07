@@ -5,8 +5,8 @@ use nucleo_matcher::{
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Rect},
-    style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    style::Style,
+    widgets::{Block, Paragraph},
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -252,23 +252,20 @@ impl App {
     }
 }
 
-pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
-    use ratatui::widgets::{Cell, Row, Table};
+pub fn render_main_view(f: &mut Frame, area: Rect, app: &mut App) {
+    use ratatui::{
+        style::Modifier,
+        widgets::{Cell, Row, Table},
+    };
 
-    let main_state = &app.main_state;
+    let main_state = &mut app.main_state;
     let is_searching = main_state.main_state_focus == MainStateFocus::Search;
-
-    let header_cells = ["Name", "File"]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow)));
-    let header = Row::new(header_cells)
-        .style(Style::default().fg(Color::White))
-        .height(1);
 
     let main_chunks = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
         .constraints([
             Constraint::Length(3),
+            Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
@@ -280,56 +277,83 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
     let ascii_art = "░▀█▀░█▀▀░█▀█░█▀█░█▄█░█▀█░▀█▀░█▀▀░\n\
          ░░█░░█░░░█░█░█░█░█░█░█▀█░░█░░█▀▀░\n\
          ░▀▀▀░▀▀▀░▀▀▀░▀░▀░▀░▀░▀░▀░░▀░░▀▀▀░";
-    let ascii_paragraph = Paragraph::new(ascii_art)
-        .style(Style::default().fg(Color::Rgb(74, 222, 128)))
-        .alignment(Alignment::Center);
-    f.render_widget(ascii_paragraph, main_chunks[0]);
+    f.render_widget(
+        Paragraph::new(ascii_art)
+            .style(Style::default().fg(crate::views::theme::ACCENT))
+            .alignment(Alignment::Center),
+        main_chunks[0],
+    );
 
-    let tagline = "Add svg icons to your js apps without any dependencies";
-    let tagline_paragraph = Paragraph::new(tagline)
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    f.render_widget(tagline_paragraph, main_chunks[1]);
+    f.render_widget(
+        Paragraph::new("Add svg icons to your js apps without any dependencies")
+            .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
+            .alignment(Alignment::Center),
+        main_chunks[1],
+    );
 
-    let status_text = main_state.status_message.as_deref().unwrap_or("");
+    let status_text = main_state.status_message.clone().unwrap_or_default();
     let status_color = if main_state.status_is_error {
-        Color::Red
+        crate::views::theme::ERROR
     } else {
-        Color::DarkGray
+        crate::views::theme::SUBTLE_TEXT
     };
-    let status_paragraph = Paragraph::new(status_text)
-        .style(Style::default().fg(status_color))
-        .alignment(Alignment::Center);
-    f.render_widget(status_paragraph, main_chunks[2]);
+    f.render_widget(
+        Paragraph::new(status_text)
+            .style(Style::default().fg(status_color))
+            .alignment(Alignment::Center),
+        main_chunks[2],
+    );
+
+    let search_chunks = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([
+            Constraint::Length(10),
+            Constraint::Fill(1),
+            Constraint::Length(8),
+        ])
+        .split(main_chunks[3]);
+
+    f.render_widget(
+        Paragraph::new("Search /")
+            .style(Style::default().fg(crate::views::theme::MUTED_TEXT))
+            .alignment(Alignment::Left),
+        search_chunks[0],
+    );
 
     if is_searching {
-        let chunks = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Horizontal)
-            .constraints([
-                Constraint::Length(11),
-                Constraint::Fill(1),
-                Constraint::Min(0),
-            ])
-            .split(main_chunks[3]);
-        let search_label = Paragraph::new("🔍 Search:")
-            .style(Style::default().fg(Color::White))
-            .alignment(Alignment::Left);
-        let search_enter_paragraph = Paragraph::new("[Enter]")
-            .style(Style::default().fg(Color::Green))
-            .alignment(Alignment::Right);
-        f.render_widget(search_label, chunks[0]);
-        f.render_widget(&main_state.search_textarea, chunks[1]);
-        f.render_widget(search_enter_paragraph, chunks[2]);
+        main_state.search_textarea.set_block(Block::default());
+        main_state.search_textarea.set_cursor_style(
+            Style::default()
+                .bg(crate::views::theme::ACCENT)
+                .fg(crate::views::theme::BASE_BG),
+        );
+        main_state
+            .search_textarea
+            .set_cursor_line_style(Style::default());
+        f.render_widget(&main_state.search_textarea, search_chunks[1]);
+        f.render_widget(
+            Paragraph::new("enter")
+                .style(Style::default().fg(crate::views::theme::MUTED_TEXT))
+                .alignment(Alignment::Right),
+            search_chunks[2],
+        );
     } else {
         let search_display = if main_state.search_items_value.is_empty() {
             String::new()
         } else {
-            format!("🔍 {}", main_state.search_items_value)
+            main_state.search_items_value.clone()
         };
-        let search_paragraph = Paragraph::new(search_display.as_str())
-            .style(Style::default().fg(Color::White))
-            .alignment(Alignment::Left);
-        f.render_widget(search_paragraph, main_chunks[3]);
+        let search_color = if main_state.search_items_value.is_empty() {
+            crate::views::theme::MUTED_TEXT
+        } else {
+            crate::views::theme::TEXT
+        };
+        f.render_widget(
+            Paragraph::new(search_display)
+                .style(Style::default().fg(search_color))
+                .alignment(Alignment::Left),
+            search_chunks[1],
+        );
     }
 
     let item_list = if main_state.search_items_value.is_empty() {
@@ -338,9 +362,16 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         &app.filtered_items
     };
     let show_no_results = !main_state.search_items_value.is_empty() && item_list.is_empty();
+
+    let header_cells = ["Name", "File"]
+        .iter()
+        .map(|h| Cell::from(*h).style(Style::default().fg(crate::views::theme::MUTED_TEXT)));
+    let header = Row::new(header_cells).style(Style::default().fg(crate::views::theme::TEXT));
+
     let rows: Vec<Row> = if show_no_results {
         vec![Row::new(vec![
-            Cell::from("No results").style(Style::default().fg(Color::DarkGray)),
+            Cell::from("No icons match your search")
+                .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT)),
             Cell::from(""),
         ])]
     } else {
@@ -348,8 +379,10 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
             .iter()
             .map(|item| {
                 Row::new(vec![
-                    Cell::from(item.name.as_str()),
-                    Cell::from(item.file_path.as_str()),
+                    Cell::from(item.name.as_str())
+                        .style(Style::default().fg(crate::views::theme::TEXT)),
+                    Cell::from(item.file_path.as_str())
+                        .style(Style::default().fg(crate::views::theme::MUTED_TEXT)),
                 ])
             })
             .collect()
@@ -361,39 +394,49 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         [Constraint::Percentage(50), Constraint::Percentage(50)],
     )
     .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_type(ratatui::widgets::BorderType::Rounded),
-    )
+    .block(Block::default())
     .column_spacing(2)
-    .highlight_symbol("→  ")
-    .row_highlight_style(Style::default().bg(Color::DarkGray));
+    .highlight_symbol("  ")
+    .row_highlight_style(
+        Style::default()
+            .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
+            .fg(crate::views::theme::TEXT)
+            .add_modifier(Modifier::BOLD),
+    );
 
     let mut state = ratatui::widgets::TableState::default();
     if !show_no_results && has_rows {
         state.select(Some(app.selected_index));
     }
-    f.render_stateful_widget(table, main_chunks[4], &mut state);
+    f.render_stateful_widget(table, main_chunks[5], &mut state);
 
-    let instructions =
-        "a Add | i Iconify | d Delete | r Rename | o Open | / Search | ? Help | q Quit | Up/Down";
-    let version_label = format!("iconmate v{}", env!("CARGO_PKG_VERSION"));
+    let shortcuts = crate::views::theme::shortcut_line(&[
+        ("Add", "a"),
+        ("Iconify", "i"),
+        ("Delete", "d"),
+        ("Rename", "r"),
+        ("Open", "o"),
+        ("Help", "?"),
+        ("Quit", "q"),
+    ]);
+    let version_label = format!("v{}", env!("CARGO_PKG_VERSION"));
     let footer_layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Horizontal)
         .constraints([
             Constraint::Min(0),
             Constraint::Length(version_label.chars().count() as u16 + 1),
         ])
-        .split(main_chunks[5]);
-    let instructions_paragraph = Paragraph::new(instructions)
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Left);
-    let version_paragraph = Paragraph::new(version_label)
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Right);
-    f.render_widget(instructions_paragraph, footer_layout[0]);
-    f.render_widget(version_paragraph, footer_layout[1]);
+        .split(main_chunks[6]);
+    f.render_widget(
+        Paragraph::new(shortcuts).alignment(Alignment::Left),
+        footer_layout[0],
+    );
+    f.render_widget(
+        Paragraph::new(version_label)
+            .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
+            .alignment(Alignment::Right),
+        footer_layout[1],
+    );
 }
 
 #[cfg(test)]

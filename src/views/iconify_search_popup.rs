@@ -11,8 +11,8 @@ use nucleo_matcher::{
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint},
-    style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    style::Style,
+    widgets::{Block, List, ListItem, Paragraph},
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -722,62 +722,119 @@ fn icones_collection_url(icon_name: &str) -> Option<String> {
 }
 
 pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
-    let area = popup_area(f.area(), 90, 24);
-    f.render_widget(ratatui::widgets::Clear, area);
+    use ratatui::{
+        style::Modifier,
+        text::{Line, Span},
+    };
 
-    let title = Block::bordered()
-        .title("Iconify Search")
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .title_style(Style::default().fg(Color::White))
-        .title_alignment(Alignment::Center);
-    f.render_widget(title, area);
+    let area = popup_area(f.area(), 92, 23);
+    let body_area = crate::views::theme::render_popup_shell(f, area, "Iconify Search");
 
     let inner = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(2)
         .constraints([
             Constraint::Length(3),
+            Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(0),
             Constraint::Length(1),
             Constraint::Length(1),
         ])
-        .split(area);
+        .split(body_area);
 
     let Some(state) = app.iconify_search_popup_state.as_mut() else {
         return;
     };
 
-    let search_block = Block::default().borders(Borders::TOP).title("Search");
+    let search_block = Block::default()
+        .title("Search")
+        .title_style(
+            Style::default()
+                .fg(crate::views::theme::MUTED_TEXT)
+                .add_modifier(Modifier::BOLD),
+        )
+        .style(Style::default().fg(crate::views::theme::TEXT));
     state.search_textarea.set_block(search_block);
+    state.search_textarea.set_cursor_style(
+        Style::default()
+            .bg(crate::views::theme::ACCENT)
+            .fg(crate::views::theme::BASE_BG),
+    );
     state
         .search_textarea
         .set_cursor_line_style(Style::default());
     f.render_widget(&state.search_textarea, inner[0]);
 
-    let tabs_label = match state.active_tab {
-        IconifySearchTab::Collections => "[Collections]    Icons",
-        IconifySearchTab::Icons => "Collections    [Icons]",
+    let collections_style = if state.active_tab == IconifySearchTab::Collections {
+        Style::default()
+            .bg(crate::views::theme::TAB_BG_ACTIVE)
+            .fg(crate::views::theme::TEXT)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .bg(crate::views::theme::TAB_BG)
+            .fg(crate::views::theme::MUTED_TEXT)
     };
-    let tabs = Paragraph::new(tabs_label)
-        .style(Style::default().fg(Color::White))
-        .alignment(Alignment::Left);
+    let icons_style = if state.active_tab == IconifySearchTab::Icons {
+        Style::default()
+            .bg(crate::views::theme::TAB_BG_ACTIVE)
+            .fg(crate::views::theme::TEXT)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .bg(crate::views::theme::TAB_BG)
+            .fg(crate::views::theme::MUTED_TEXT)
+    };
+
+    let mut tabs_spans = vec![
+        Span::styled(" Collections ", collections_style),
+        Span::styled(" | ", Style::default().fg(crate::views::theme::SUBTLE_TEXT)),
+        Span::styled(" Icons ", icons_style),
+    ];
+    if let Some(prefix) = &state.selected_collection_filter {
+        tabs_spans.push(Span::raw("  "));
+        tabs_spans.push(Span::styled(
+            format!("collection: {prefix}"),
+            Style::default().fg(crate::views::theme::SUBTLE_TEXT),
+        ));
+    }
+
+    let tabs = Paragraph::new(Line::from(tabs_spans)).alignment(Alignment::Left);
     f.render_widget(tabs, inner[1]);
 
     match state.active_tab {
         IconifySearchTab::Collections => {
             let collection_items = state.active_collections();
             let items: Vec<ListItem> = if collection_items.is_empty() {
-                vec![ListItem::new("No collections")]
+                vec![ListItem::new(Line::from(Span::styled(
+                    "No collections",
+                    Style::default().fg(crate::views::theme::SUBTLE_TEXT),
+                )))]
             } else {
                 collection_items
                     .iter()
                     .map(|item| {
-                        let label = match item.total {
-                            Some(total) => format!("{} ({}) - {}", item.prefix, total, item.name),
-                            None => format!("{} - {}", item.prefix, item.name),
+                        let total_label = match item.total {
+                            Some(total) => format!("{total}"),
+                            None => "-".to_string(),
                         };
-                        ListItem::new(label)
+                        let line = Line::from(vec![
+                            Span::styled(
+                                format!("{: <10}", item.prefix),
+                                Style::default()
+                                    .fg(crate::views::theme::ACCENT_SOFT)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(
+                                format!(" {total_label: <6}"),
+                                Style::default().fg(crate::views::theme::MUTED_TEXT),
+                            ),
+                            Span::styled(
+                                item.name.clone(),
+                                Style::default().fg(crate::views::theme::TEXT),
+                            ),
+                        ]);
+                        ListItem::new(line)
                     })
                     .collect()
             };
@@ -788,19 +845,45 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
             }
 
             let list = List::new(items)
-                .block(Block::default().borders(Borders::TOP).title("Collections"))
-                .highlight_symbol("> ")
-                .highlight_style(Style::default().bg(Color::DarkGray));
-            f.render_stateful_widget(list, inner[2], &mut list_state);
+                .block(
+                    Block::default()
+                        .title("Collections")
+                        .title_style(
+                            Style::default()
+                                .fg(crate::views::theme::MUTED_TEXT)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .style(
+                            Style::default()
+                                .bg(crate::views::theme::PANEL_BG)
+                                .fg(crate::views::theme::TEXT),
+                        ),
+                )
+                .highlight_symbol("  ")
+                .highlight_style(
+                    Style::default()
+                        .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
+                        .fg(crate::views::theme::TEXT)
+                        .add_modifier(Modifier::BOLD),
+                );
+            f.render_stateful_widget(list, inner[3], &mut list_state);
         }
         IconifySearchTab::Icons => {
             let items: Vec<ListItem> = if state.visible_icons.is_empty() {
-                vec![ListItem::new("No icons")]
+                vec![ListItem::new(Line::from(Span::styled(
+                    "No icons",
+                    Style::default().fg(crate::views::theme::SUBTLE_TEXT),
+                )))]
             } else {
                 state
                     .visible_icons
                     .iter()
-                    .map(|icon| ListItem::new(icon.clone()))
+                    .map(|icon| {
+                        ListItem::new(Line::from(Span::styled(
+                            icon.clone(),
+                            Style::default().fg(crate::views::theme::TEXT),
+                        )))
+                    })
                     .collect()
             };
 
@@ -816,10 +899,28 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
             };
 
             let list = List::new(items)
-                .block(Block::default().borders(Borders::TOP).title(title))
-                .highlight_symbol("> ")
-                .highlight_style(Style::default().bg(Color::DarkGray));
-            f.render_stateful_widget(list, inner[2], &mut list_state);
+                .block(
+                    Block::default()
+                        .title(title)
+                        .title_style(
+                            Style::default()
+                                .fg(crate::views::theme::MUTED_TEXT)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .style(
+                            Style::default()
+                                .bg(crate::views::theme::PANEL_BG)
+                                .fg(crate::views::theme::TEXT),
+                        ),
+                )
+                .highlight_symbol("  ")
+                .highlight_style(
+                    Style::default()
+                        .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
+                        .fg(crate::views::theme::TEXT)
+                        .add_modifier(Modifier::BOLD),
+                );
+            f.render_stateful_widget(list, inner[3], &mut list_state);
         }
     }
 
@@ -838,25 +939,329 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
         .or_else(|| state.status_message.clone())
         .unwrap_or_default();
     let status_color = if state.status_is_error {
-        Color::Red
+        crate::views::theme::ERROR
     } else {
-        Color::DarkGray
+        crate::views::theme::MUTED_TEXT
     };
     let status = Paragraph::new(status_message)
         .alignment(Alignment::Left)
         .style(Style::default().fg(status_color));
-    f.render_widget(status, inner[3]);
+    f.render_widget(status, inner[4]);
 
-    let help_text = if state.active_tab == IconifySearchTab::Collections {
-        "Tab switch tabs | Enter view icons | Up/Down move | Esc close"
+    let help_line = if state.active_tab == IconifySearchTab::Collections {
+        crate::views::theme::shortcut_line(&[
+            ("Open", "enter"),
+            ("Switch", "tab"),
+            ("Move", "up/down"),
+            ("Close", "esc"),
+        ])
     } else {
-        "Enter autofill Add popup | Ctrl+o open in browser | Up/Down move | Tab switch | Esc close"
+        crate::views::theme::shortcut_line(&[
+            ("Use icon", "enter"),
+            ("Preview", "ctrl+o"),
+            ("Move", "up/down"),
+            ("Switch", "tab"),
+            ("Close", "esc"),
+        ])
     };
-    let help = Paragraph::new(help_text)
-        .alignment(Alignment::Left)
-        .style(Style::default().fg(Color::DarkGray));
-    f.render_widget(help, inner[4]);
+    let help = Paragraph::new(help_line).alignment(Alignment::Left);
+    f.render_widget(help, inner[5]);
 }
+
+#[cfg(any())]
+mod tests {
+    use super::{
+        IconifySearchPopupState, IconifySearchTab, fuzzy_filter_collections, fuzzy_filter_icons,
+        icones_collection_url,
+    };
+    use crate::app_state::{App, AppConfig, AppFocus, IconifyCollectionListItem};
+    use tempfile::TempDir;
+    use tui_textarea::{Input, Key};
+
+    fn test_app() -> App {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let folder = temp_dir.path().join("icons");
+
+        let config = AppConfig {
+            folder: folder.to_string_lossy().into_owned(),
+            preset: "normal".to_string(),
+            template: None,
+            svg_viewer_cmd: None,
+            svg_viewer_cmd_source: "test".to_string(),
+            global_config_loaded: false,
+            project_config_loaded: false,
+        };
+
+        App::new(config)
+    }
+
+    #[test]
+    fn builds_icones_collection_url_for_iconify_name() {
+        assert_eq!(
+            icones_collection_url("mdi:home"),
+            Some("https://icones.js.org/collection/mdi".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_for_invalid_icon_name() {
+        assert_eq!(icones_collection_url("mdi"), None);
+        assert_eq!(icones_collection_url(""), None);
+    }
+
+    #[test]
+    fn fuzzy_collections_support_non_substring_queries() {
+        let items = vec![
+            IconifyCollectionListItem {
+                prefix: "lucide".to_string(),
+                name: "Lucide".to_string(),
+                total: Some(100),
+            },
+            IconifyCollectionListItem {
+                prefix: "mdi".to_string(),
+                name: "Material Design Icons".to_string(),
+                total: Some(200),
+            },
+        ];
+
+        let filtered = fuzzy_filter_collections(&items, "lcd");
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].prefix, "lucide");
+    }
+
+    #[test]
+    fn fuzzy_icon_filter_supports_non_substring_queries() {
+        let icons = vec![
+            "arrow-left".to_string(),
+            "arrow-right".to_string(),
+            "alert-circle".to_string(),
+        ];
+
+        let filtered = fuzzy_filter_icons(&icons, "arwlf");
+
+        assert_eq!(filtered, vec!["arrow-left".to_string()]);
+    }
+
+    #[test]
+    fn j_and_k_type_into_search_input() {
+        let mut app = test_app();
+        app.init_iconify_search_popup();
+
+        let state = app
+            .iconify_search_popup_state
+            .as_mut()
+            .expect("iconify popup should initialize");
+        state.active_tab = IconifySearchTab::Icons;
+        state.visible_icons = vec!["arrow-left".to_string(), "arrow-right".to_string()];
+        state.selected_icon_index = 1;
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('j'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup should remain open");
+        assert_eq!(state.search_textarea.lines().join(""), "j");
+        assert_eq!(state.selected_icon_index, 1);
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('k'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup should remain open");
+        assert_eq!(state.search_textarea.lines().join(""), "jk");
+        assert_eq!(state.selected_icon_index, 1);
+    }
+
+    #[test]
+    fn collection_icon_search_is_local_and_does_not_queue_remote_search() {
+        let mut app = test_app();
+        app.init_iconify_search_popup();
+
+        let state = app
+            .iconify_search_popup_state
+            .as_mut()
+            .expect("iconify popup should initialize");
+        state.active_tab = IconifySearchTab::Icons;
+        state.selected_collection_filter = Some("mdi".to_string());
+        state.collection_icons = vec![
+            "home-outline".to_string(),
+            "account-box".to_string(),
+            "heart".to_string(),
+        ];
+        state.visible_icons = state.collection_icons.clone();
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('h'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup should remain open");
+        assert_eq!(state.search_query, "h");
+        assert_eq!(state.search_textarea.lines().join(""), "h");
+        assert!(!state.is_loading_search);
+        assert_eq!(state.last_search_query, "");
+        assert!(state.visible_icons.contains(&"home-outline".to_string()));
+    }
+
+    #[test]
+    fn global_icon_search_keeps_remote_query_flow() {
+        let mut app = test_app();
+        app.init_iconify_search_popup();
+
+        let state = app
+            .iconify_search_popup_state
+            .as_mut()
+            .expect("iconify popup should initialize");
+        state.active_tab = IconifySearchTab::Icons;
+        state.selected_collection_filter = None;
+        state.visible_icons.clear();
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Char('m'),
+            ..Default::default()
+        });
+
+        let state = app
+            .iconify_search_popup_state
+            .as_ref()
+            .expect("iconify popup should remain open");
+        assert_eq!(state.search_query, "m");
+        assert!(state.is_loading_search);
+        assert_eq!(state.last_search_query, "m");
+    }
+
+    #[test]
+    fn iconify_search_escape_closes_popup() {
+        let mut app = test_app();
+        app.init_iconify_search_popup();
+
+        app.handlekeys_iconify_search_popup(Input {
+            key: Key::Esc,
+            ..Default::default()
+        });
+
+        assert!(app.iconify_search_popup_state.is_none());
+        assert!(matches!(app.app_focus, AppFocus::Main));
+    }
+}
+/*
+                        .fg(crate::views::theme::ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                );
+            f.render_stateful_widget(list, inner[3], &mut list_state);
+        }
+        IconifySearchTab::Icons => {
+            let items: Vec<ListItem> = if state.visible_icons.is_empty() {
+                vec![ListItem::new(Line::from(Span::styled(
+                    "No icons",
+                    Style::default().fg(crate::views::theme::SUBTLE_TEXT),
+                )))]
+            } else {
+                state
+                    .visible_icons
+                    .iter()
+                    .map(|icon| {
+                        ListItem::new(Line::from(Span::styled(
+                            icon.clone(),
+                            Style::default().fg(crate::views::theme::TEXT),
+                        )))
+                    })
+                    .collect()
+            };
+
+            let mut list_state = ratatui::widgets::ListState::default();
+            if !state.visible_icons.is_empty() {
+                list_state.select(Some(state.selected_icon_index));
+            }
+
+            let title = if let Some(filter_prefix) = &state.selected_collection_filter {
+                format!("Icons (collection: {filter_prefix})")
+            } else {
+                "Icons".to_string()
+            };
+
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .title(title)
+                        .title_style(
+                            Style::default()
+                                .fg(crate::views::theme::MUTED_TEXT)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .style(
+                            Style::default()
+                                .bg(crate::views::theme::PANEL_BG)
+                                .fg(crate::views::theme::TEXT),
+                        ),
+                )
+                .highlight_symbol("  ")
+                .highlight_style(
+                    Style::default()
+                        .fg(crate::views::theme::ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                );
+            f.render_stateful_widget(list, inner[3], &mut list_state);
+        }
+    }
+
+    let loading_message = if state.is_loading_collection_icons {
+        Some("Loading collection icons...")
+    } else if state.is_loading_search {
+        Some("Searching Iconify...")
+    } else if state.is_loading_collections {
+        Some("Loading collections...")
+    } else {
+        None
+    };
+
+    let status_message = loading_message
+        .map(std::string::ToString::to_string)
+        .or_else(|| state.status_message.clone())
+        .unwrap_or_default();
+    let status_color = if state.status_is_error {
+        crate::views::theme::ERROR
+    } else {
+        crate::views::theme::MUTED_TEXT
+    };
+    let status = Paragraph::new(status_message)
+        .alignment(Alignment::Left)
+        .style(Style::default().fg(status_color));
+    f.render_widget(status, inner[4]);
+
+    let help_line = if state.active_tab == IconifySearchTab::Collections {
+        crate::views::theme::shortcut_line(&[
+            ("Open", "enter"),
+            ("Switch", "tab"),
+            ("Move", "up/down"),
+            ("Close", "esc"),
+        ])
+    } else {
+        crate::views::theme::shortcut_line(&[
+            ("Use icon", "enter"),
+            ("Preview", "ctrl+o"),
+            ("Move", "up/down"),
+            ("Switch", "tab"),
+            ("Close", "esc"),
+        ])
+    };
+    let help = Paragraph::new(help_line).alignment(Alignment::Left);
+    f.render_widget(help, inner[5]);
+}
+
+*/
 
 #[cfg(test)]
 mod tests {

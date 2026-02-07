@@ -2,8 +2,8 @@ use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::style::Style;
+use ratatui::widgets::Paragraph;
 use tui_textarea::{Input, Key};
 
 #[derive(Debug)]
@@ -82,10 +82,10 @@ impl App {
                     self.close_delete_popup();
                 }
             }
-            Key::Up | Key::Char('k') => {
+            Key::Left | Key::Char('h') | Key::Up | Key::Char('k') => {
                 state.selected_index = state.selected_index.saturating_sub(1);
             }
-            Key::Down | Key::Char('j') => {
+            Key::Right | Key::Char('l') | Key::Down | Key::Char('j') => {
                 state.selected_index = (state.selected_index + 1).min(1);
             }
             _ => {}
@@ -94,26 +94,22 @@ impl App {
 }
 
 pub fn render_delete_popup(f: &mut Frame, app: &mut App) {
-    let area = popup_area(f.area(), 56, 10);
-    f.render_widget(ratatui::widgets::Clear, area);
+    use ratatui::{
+        style::Modifier,
+        text::{Line, Span},
+    };
+
+    let area = popup_area(f.area(), 58, 10);
+    let body_area = crate::views::theme::render_popup_shell(f, area, "Delete Icon");
 
     let layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(2)
         .constraints([
-            Constraint::Length(2), // Prompt
-            Constraint::Length(1), // Actions
-            Constraint::Length(1), // Help
-            Constraint::Min(0),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
-        .split(area);
-
-    let title = Block::bordered()
-        .title("Delete Icon")
-        .title_style(Style::default().fg(Color::White))
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .title_alignment(Alignment::Center);
-    f.render_widget(title, area);
+        .split(body_area);
 
     if let Some(state) = &mut app.delete_popup_state {
         let icon_name = state
@@ -122,24 +118,60 @@ pub fn render_delete_popup(f: &mut Frame, app: &mut App) {
             .map(|item| item.name.as_str())
             .unwrap_or("this icon");
         let prompt = Paragraph::new(format!("Delete '{icon_name}'?"))
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::White));
+            .alignment(Alignment::Left)
+            .style(
+                Style::default()
+                    .fg(crate::views::theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            );
         f.render_widget(prompt, layout[0]);
 
-        let actions = if state.selected_index == 0 {
-            Paragraph::new("[y] Delete    n Cancel")
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::Red))
+        let action_line = if state.selected_index == 0 {
+            Line::from(vec![
+                Span::styled(
+                    " Delete ",
+                    Style::default()
+                        .bg(crate::views::theme::ERROR)
+                        .fg(crate::views::theme::BASE_BG)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled("y", Style::default().fg(crate::views::theme::MUTED_TEXT)),
+                Span::raw("     "),
+                Span::styled(
+                    "Cancel",
+                    Style::default()
+                        .fg(crate::views::theme::SUBTLE_TEXT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled("n", Style::default().fg(crate::views::theme::MUTED_TEXT)),
+            ])
         } else {
-            Paragraph::new("y Delete    [n] Cancel")
-                .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::Gray))
+            Line::from(vec![
+                Span::styled(
+                    "Delete",
+                    Style::default()
+                        .fg(crate::views::theme::ACCENT_SOFT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled("y", Style::default().fg(crate::views::theme::MUTED_TEXT)),
+                Span::raw("     "),
+                Span::styled(
+                    " Cancel ",
+                    Style::default()
+                        .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
+                        .fg(crate::views::theme::TEXT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled("n", Style::default().fg(crate::views::theme::MUTED_TEXT)),
+            ])
         };
-        f.render_widget(actions, layout[1]);
+        f.render_widget(
+            Paragraph::new(action_line).alignment(Alignment::Left),
+            layout[2],
+        );
     }
-
-    let help_text = Paragraph::new("Enter to confirm, Esc to cancel")
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
-    f.render_widget(help_text, layout[2]);
 }

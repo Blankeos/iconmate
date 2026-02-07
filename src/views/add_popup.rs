@@ -4,9 +4,9 @@ use crate::app_state::{App, AppFocus};
 use crate::utils::{PRESETS_OPTIONS, Preset, PresetOption, popup_area};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
+use ratatui::widgets::{Block, ListItem, Paragraph};
 use tui_textarea::{Input, Key, TextArea};
 
 // Constants
@@ -15,7 +15,6 @@ const PRESET_FIELD_IDX: usize = 0;
 const ICON_FIELD_IDX: usize = 1;
 const FILENAME_FIELD_IDX: usize = 2;
 const NAME_FIELD_IDX: usize = 3;
-const FOOTER_FIELD_IDX: usize = 4;
 const DEFAULT_OUTPUT_LINE_TEMPLATE: &str = "export { default as Icon%name% } from './%icon%%ext%';";
 
 #[derive(Debug)]
@@ -100,7 +99,11 @@ impl AddPopupState {
         for (_i, textarea) in self.inputs.iter_mut().enumerate() {
             // Stay
             if index == _i {
-                textarea.set_cursor_style(Style::default().bg(Color::White));
+                textarea.set_cursor_style(
+                    Style::default()
+                        .bg(crate::views::theme::ACCENT)
+                        .fg(crate::views::theme::BASE_BG),
+                );
                 continue;
             }
             // Remove
@@ -428,27 +431,30 @@ impl App {
 }
 
 pub fn render_add_popup(f: &mut Frame, app: &mut App) {
-    let area = popup_area(f.area(), 70, 24);
-    f.render_widget(ratatui::widgets::Clear, area);
+    use ratatui::style::Modifier;
+
+    let area = popup_area(f.area(), 78, 29);
+    let body_area = crate::views::theme::render_popup_shell(f, area, "Add Icon");
 
     let layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(2)
         .constraints([
-            Constraint::Length(6), // Preset
-            Constraint::Length(4), // Icon
-            Constraint::Length(3), // Filename
-            Constraint::Length(3), // Name
-            Constraint::Min(0),    // Footer
+            Constraint::Length(6),
+            Constraint::Length(1),
+            Constraint::Length(4),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
-        .split(area);
-
-    let title = Block::bordered()
-        .title("Add Icon")
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .title_style(Style::default().fg(Color::White))
-        .title_alignment(Alignment::Center);
-    f.render_widget(title, area);
+        .split(body_area);
+    let preset_area = layout[0];
+    let icon_area = layout[2];
+    let filename_area = layout[4];
+    let name_area = layout[6];
+    let footer_area = layout[8];
 
     if let Some(state) = &mut app.add_popup_state {
         let labels: Vec<String> = vec![
@@ -458,9 +464,20 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                 format!("Preset filter: {}", state.preset_filter)
             },
             String::from("Icon source (name, URL, SVG, or empty)"),
-            String::from("Filename"),
-            String::from("Name"),
+            String::from("Filename (auto keeps extension)"),
+            String::from("Component name"),
         ];
+
+        let field_theme = |active: bool| {
+            if active {
+                (crate::views::theme::INPUT_BG, crate::views::theme::ACCENT)
+            } else {
+                (
+                    crate::views::theme::INPUT_BG,
+                    crate::views::theme::MUTED_TEXT,
+                )
+            }
+        };
 
         // Create a selectable list for preset
         let mut state_store = ratatui::widgets::ListState::default();
@@ -481,98 +498,108 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         };
         if items.is_empty() {
             state_store.select(None);
-            items =
-                vec![ListItem::new("No presets found").style(Style::default().fg(Color::DarkGray))];
+            items = vec![
+                ListItem::new("No presets found")
+                    .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT)),
+            ];
         } else {
             state_store.select(Some(state.preset_index))
         };
-        let mut list = ratatui::widgets::List::new(items)
+
+        let (preset_bg, preset_title) = field_theme(state.current_input == PRESET_FIELD_IDX);
+        let list = ratatui::widgets::List::new(items)
             .block(
                 Block::default()
-                    .borders(Borders::TOP)
                     .title(labels[PRESET_FIELD_IDX].clone())
-                    .border_style(if state.current_input == PRESET_FIELD_IDX {
-                        Style::default().fg(Color::Green)
-                    } else {
+                    .title_style(
                         Style::default()
-                    }),
+                            .fg(preset_title)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .style(Style::default().bg(preset_bg).fg(crate::views::theme::TEXT)),
             )
-            .highlight_symbol("→ ");
-        if state.current_input == PRESET_FIELD_IDX {
-            list = list.highlight_style(Style::default().bg(Color::DarkGray))
-        }
-
-        f.render_stateful_widget(list, layout[PRESET_FIELD_IDX], &mut state_store);
-
-        let icon_block = Block::default()
-            .borders(Borders::TOP)
-            .border_style(if state.current_input == ICON_FIELD_IDX {
-                Style::default().fg(Color::Green)
-            } else {
+            .highlight_symbol("  ")
+            .highlight_style(
                 Style::default()
-            })
-            .title(labels[ICON_FIELD_IDX].clone());
+                    .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
+                    .fg(crate::views::theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+        f.render_stateful_widget(list, preset_area, &mut state_store);
+
+        let (icon_bg, icon_title) = field_theme(state.current_input == ICON_FIELD_IDX);
+        let icon_block = Block::default()
+            .title(labels[ICON_FIELD_IDX].clone())
+            .title_style(Style::default().fg(icon_title).add_modifier(Modifier::BOLD))
+            .style(Style::default().bg(icon_bg).fg(crate::views::theme::TEXT));
         state.inputs[ICON_FIELD_IDX].set_block(icon_block);
         state.inputs[ICON_FIELD_IDX].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[ICON_FIELD_IDX], layout[ICON_FIELD_IDX]);
+        f.render_widget(&state.inputs[ICON_FIELD_IDX], icon_area);
 
+        let (filename_bg, filename_title) = field_theme(state.current_input == FILENAME_FIELD_IDX);
         let filename_block = Block::default()
-            .borders(Borders::TOP)
-            .border_style(if state.current_input == FILENAME_FIELD_IDX {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
-            })
             .title(labels[FILENAME_FIELD_IDX].clone())
+            .title_style(
+                Style::default()
+                    .fg(filename_title)
+                    .add_modifier(Modifier::BOLD),
+            )
             .title(
                 Line::from(crate::utils::filename_from_preset(
                     Some(state.inputs[FILENAME_FIELD_IDX].lines().join("")),
                     state.preset.clone(),
                 ))
+                .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
                 .alignment(Alignment::Right),
+            )
+            .style(
+                Style::default()
+                    .bg(filename_bg)
+                    .fg(crate::views::theme::TEXT),
             );
         state.inputs[FILENAME_FIELD_IDX].set_block(filename_block);
         state.inputs[FILENAME_FIELD_IDX].set_cursor_line_style(Style::default());
-        f.render_widget(
-            &state.inputs[FILENAME_FIELD_IDX],
-            layout[FILENAME_FIELD_IDX],
-        );
+        f.render_widget(&state.inputs[FILENAME_FIELD_IDX], filename_area);
 
         let name_value = state.inputs[NAME_FIELD_IDX].lines().join("");
+        let (name_bg, name_title) = field_theme(state.current_input == NAME_FIELD_IDX);
         let name_block = Block::default()
-            .borders(Borders::TOP)
-            .border_style(if state.current_input == NAME_FIELD_IDX {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
-            })
             .title(format!("{}", labels[NAME_FIELD_IDX]))
+            .title_style(Style::default().fg(name_title).add_modifier(Modifier::BOLD))
             .title(
                 Line::from(if name_value.is_empty() {
                     String::from("usage: <Icon{} />")
                 } else {
                     format!("usage: <Icon{} />", name_value)
                 })
+                .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
                 .alignment(Alignment::Right),
-            );
+            )
+            .style(Style::default().bg(name_bg).fg(crate::views::theme::TEXT));
         state.inputs[NAME_FIELD_IDX].set_block(name_block);
         state.inputs[NAME_FIELD_IDX].set_cursor_line_style(Style::default());
-        f.render_widget(&state.inputs[NAME_FIELD_IDX], layout[NAME_FIELD_IDX]);
+        f.render_widget(&state.inputs[NAME_FIELD_IDX], name_area);
 
-        let footer_text = if let Some(message) = &state.status_message {
-            message.clone()
+        let footer = if let Some(message) = &state.status_message {
+            let color = if state.status_is_error {
+                crate::views::theme::ERROR
+            } else {
+                crate::views::theme::MUTED_TEXT
+            };
+            Paragraph::new(message.clone())
+                .alignment(Alignment::Left)
+                .style(Style::default().fg(color))
         } else {
-            String::from("Tab to move, Enter on Name to submit, Esc to cancel, Cmd/Ctrl+V to paste")
+            Paragraph::new(crate::views::theme::shortcut_line(&[
+                ("Next", "tab"),
+                ("Submit", "enter"),
+                ("Close", "esc"),
+                ("Paste", "cmd/ctrl+v"),
+            ]))
+            .alignment(Alignment::Left)
         };
-        let footer_color = if state.status_is_error {
-            Color::Red
-        } else {
-            Color::DarkGray
-        };
-        let footer = Paragraph::new(footer_text)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(footer_color));
-        f.render_widget(footer, layout[FOOTER_FIELD_IDX]);
+        f.render_widget(footer, footer_area);
     }
 }
 

@@ -4,8 +4,8 @@ use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::style::Style;
+use ratatui::widgets::{Block, Paragraph, Wrap};
 use tui_textarea::{Input, Key, TextArea};
 
 #[derive(Debug)]
@@ -58,7 +58,11 @@ impl App {
             }
         }
 
-        filename_input.set_cursor_style(Style::default().bg(Color::White));
+        filename_input.set_cursor_style(
+            Style::default()
+                .bg(crate::views::theme::ACCENT)
+                .fg(crate::views::theme::BASE_BG),
+        );
 
         self.rename_popup_state = Some(RenamePopupState {
             item_to_rename,
@@ -123,27 +127,21 @@ impl App {
 }
 
 pub fn render_rename_popup(f: &mut Frame, app: &mut App) {
-    let area = popup_area(f.area(), 72, 12);
-    f.render_widget(ratatui::widgets::Clear, area);
+    use ratatui::style::Modifier;
+
+    let area = popup_area(f.area(), 74, 15);
+    let body_area = crate::views::theme::render_popup_shell(f, area, "Rename File");
 
     let layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(2)
         .constraints([
             Constraint::Length(2),
             Constraint::Length(3),
+            Constraint::Length(1),
             Constraint::Length(2),
             Constraint::Length(1),
-            Constraint::Min(0),
         ])
-        .split(area);
-
-    let title = Block::bordered()
-        .title("Rename File")
-        .title_style(Style::default().fg(Color::White))
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .title_alignment(Alignment::Center);
-    f.render_widget(title, area);
+        .split(body_area);
 
     if let Some(state) = app.rename_popup_state.as_mut() {
         let status = if let Some(item) = &state.item_to_rename {
@@ -153,36 +151,46 @@ pub fn render_rename_popup(f: &mut Frame, app: &mut App) {
         };
         let status_paragraph = Paragraph::new(status)
             .alignment(Alignment::Left)
-            .style(Style::default().fg(Color::Gray));
+            .style(Style::default().fg(crate::views::theme::MUTED_TEXT));
         f.render_widget(status_paragraph, layout[0]);
 
         let input_block = Block::default()
-            .borders(Borders::TOP)
             .title("New filename")
-            .border_style(Style::default().fg(Color::Yellow));
+            .title_style(
+                Style::default()
+                    .fg(crate::views::theme::ACCENT)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .style(Style::default().fg(crate::views::theme::TEXT));
         state.filename_input.set_block(input_block);
         state.filename_input.set_cursor_line_style(Style::default());
         f.render_widget(&state.filename_input, layout[1]);
 
         let tip = Paragraph::new(
-            "Renames only the file path export target. For alias rename, use your IDE Rename Symbol.",
+            "Renames only the file path export target.\nFor alias rename, use your IDE Rename Symbol.",
         )
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::DarkGray));
-        f.render_widget(tip, layout[2]);
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: true })
+        .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT));
+        f.render_widget(tip, layout[3]);
 
-        let footer_text = state
-            .status_message
-            .clone()
-            .unwrap_or_else(|| "Enter to rename, Esc to cancel".to_string());
-        let footer_color = if state.status_is_error {
-            Color::Red
+        let footer = if let Some(message) = &state.status_message {
+            let color = if state.status_is_error {
+                crate::views::theme::ERROR
+            } else {
+                crate::views::theme::MUTED_TEXT
+            };
+            Paragraph::new(message.clone())
+                .alignment(Alignment::Left)
+                .style(Style::default().fg(color))
         } else {
-            Color::DarkGray
+            Paragraph::new(crate::views::theme::shortcut_line(&[
+                ("Rename", "enter"),
+                ("Cancel", "esc"),
+                ("Paste", "cmd/ctrl+v"),
+            ]))
+            .alignment(Alignment::Left)
         };
-        let footer = Paragraph::new(footer_text)
-            .alignment(Alignment::Center)
-            .style(Style::default().fg(footer_color));
-        f.render_widget(footer, layout[3]);
+        f.render_widget(footer, layout[4]);
     }
 }

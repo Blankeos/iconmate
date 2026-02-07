@@ -2,9 +2,9 @@ use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::widgets::Paragraph;
 use tui_textarea::{Input, Key};
 
 impl App {
@@ -23,87 +23,74 @@ impl App {
 }
 
 pub fn render_help_popup(f: &mut Frame, app: &App) {
-    let area = popup_area(f.area(), 72, 17);
-    f.render_widget(ratatui::widgets::Clear, area);
+    use ratatui::style::Modifier;
+
+    let area = popup_area(f.area(), 76, 15);
+    let body_area = crate::views::theme::render_popup_shell(f, area, "Help");
 
     let layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .margin(2)
         .constraints([
             Constraint::Length(2),
-            Constraint::Length(3),
             Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
+            Constraint::Length(4),
         ])
-        .split(area);
-
-    let title = Block::bordered()
-        .title("Help")
-        .title_style(Style::default().fg(Color::White))
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .title_alignment(Alignment::Center);
-    f.render_widget(title, area);
+        .split(body_area);
 
     let config_lines = vec![
         Line::from(vec![
             Span::styled(
-                "• ",
-                Style::default().fg(if app.config.global_config_loaded {
-                    Color::Green
+                if app.config.global_config_loaded {
+                    "● "
                 } else {
-                    Color::DarkGray
+                    "○ "
+                },
+                Style::default().fg(if app.config.global_config_loaded {
+                    crate::views::theme::ACCENT
+                } else {
+                    crate::views::theme::SUBTLE_TEXT
                 }),
             ),
-            Span::styled("Global Config", Style::default().fg(Color::White)),
+            Span::styled(
+                "Global config",
+                Style::default()
+                    .fg(crate::views::theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
         Line::from(vec![
             Span::styled(
-                "• ",
-                Style::default().fg(if app.config.project_config_loaded {
-                    Color::Green
+                if app.config.project_config_loaded {
+                    "● "
                 } else {
-                    Color::DarkGray
+                    "○ "
+                },
+                Style::default().fg(if app.config.project_config_loaded {
+                    crate::views::theme::ACCENT
+                } else {
+                    crate::views::theme::SUBTLE_TEXT
                 }),
             ),
-            Span::styled("Project Config", Style::default().fg(Color::White)),
+            Span::styled(
+                "Local config",
+                Style::default()
+                    .fg(crate::views::theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]),
     ];
     let config_status = Paragraph::new(config_lines).alignment(Alignment::Left);
     f.render_widget(config_status, layout[0]);
 
+    let svg_viewer_cmd = app.config.svg_viewer_cmd.as_deref().unwrap_or("Not set");
     let status = Paragraph::new(format!(
-        " Folder: {}\n✦ Preset: {}\n[O] Viewer source: {}",
+        "Folder: {}\nPreset: {}\nSVG viewer cmd: {}\nViewer cmd source: {}",
         app.config.folder,
         app.config.preset.as_str(),
+        svg_viewer_cmd,
         app.config.svg_viewer_cmd_source
     ))
     .alignment(Alignment::Left)
-    .style(Style::default().fg(Color::White));
-    f.render_widget(status, layout[1]);
-
-    let divider = Paragraph::new(
-        "a Add | i Iconify Search | d Delete | r Rename | o Open | / Search | ? Help | q Quit",
-    )
-    .alignment(Alignment::Center)
-    .style(Style::default().fg(Color::DarkGray));
-    f.render_widget(divider, layout[3]);
-
-    let nav = Paragraph::new("r Rename file path (alias stays the same)")
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Gray));
-    f.render_widget(nav, layout[4]);
-
-    let ide_tip = Paragraph::new("Need to rename the icon symbol? Use your IDE Rename Symbol.")
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Gray));
-    f.render_widget(ide_tip, layout[5]);
-
-    let help_text = Paragraph::new("Up/Down or j/k to navigate | Esc or ? to close")
-        .alignment(Alignment::Center)
-        .style(Style::default().fg(Color::Gray));
-    f.render_widget(help_text, layout[6]);
+    .style(Style::default().fg(crate::views::theme::MUTED_TEXT));
+    f.render_widget(status, layout[2]);
 }
