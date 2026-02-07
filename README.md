@@ -30,6 +30,7 @@ Use [icones.js.org](https://icones.js.org), a direct SVG URL, or raw SVG markup.
 
 ## Why iconmate?
 
+- **Made with Rust🦀**: Fast TUI that you can use on any IDE (powered by ratatui, nucleo).
 - **AI-ready automation** 🤖: Let your coding agents get icons and add it to your project! A CLI is basically an MCP, just let AI use `iconmate --help` and it should be able to get everything running!
 - **Zero dependencies** 📦: No icon library runtime added to your app
 - **Framework-native output** 🧩: Generate files for React, Vue, Svelte, Solid, or plain SVG
