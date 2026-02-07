@@ -10,5 +10,7 @@ config-schema:
 # Tag and release a new version - custom script by carlo.
 
 # Usage: just tag_and_release
-tag:
+tag: tag_and_release
+
+tag_and_release:
     sh tag_and_release.sh
