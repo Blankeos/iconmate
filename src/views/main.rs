@@ -1,3 +1,7 @@
+use nucleo_matcher::{
+    Config, Matcher,
+    pattern::{CaseMatching, Normalization, Pattern},
+};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Rect},
@@ -6,7 +10,49 @@ use ratatui::{
 };
 use tui_textarea::{Input, Key, TextArea};
 
-use crate::app_state::{App, AppFocus};
+use crate::{
+    app_state::{App, AppFocus},
+    utils::IconEntry,
+};
+
+#[derive(Debug, Clone)]
+struct HomeSearchCandidate {
+    index: usize,
+    haystack: String,
+}
+
+impl AsRef<str> for HomeSearchCandidate {
+    fn as_ref(&self) -> &str {
+        self.haystack.as_str()
+    }
+}
+
+fn fuzzy_filter_home_items(items: &[IconEntry], query: &str) -> Vec<IconEntry> {
+    let query = query.trim();
+    if query.is_empty() {
+        return items.to_vec();
+    }
+
+    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+    let mut matcher = Matcher::new(Config::DEFAULT);
+
+    let candidates = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| HomeSearchCandidate {
+            index,
+            haystack: format!("{} {}", item.name, item.file_path),
+        })
+        .collect::<Vec<_>>();
+
+    let mut matched = pattern.match_list(candidates, &mut matcher);
+    matched.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.index.cmp(&b.0.index)));
+
+    matched
+        .into_iter()
+        .map(|(candidate, _)| items[candidate.index].clone())
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MainStateFocus {
@@ -161,18 +207,7 @@ impl MainState {
         }
     }
     pub fn update_filtered_items(&mut self, app: &mut App) {
-        let filter = self.search_items_value.to_lowercase();
-        app.filtered_items = app
-            .items
-            .iter()
-            .filter(|entry| {
-                let case1 = entry.name.to_lowercase().contains(&filter);
-                let case2 = entry.file_path.contains(&filter);
-
-                case1 || case2
-            })
-            .cloned()
-            .collect();
+        app.filtered_items = fuzzy_filter_home_items(&app.items, &self.search_items_value);
         if app.filtered_items.is_empty() {
             app.selected_index = 0;
         } else if app.selected_index >= app.filtered_items.len() {
@@ -359,4 +394,51 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &App) {
         .alignment(Alignment::Right);
     f.render_widget(instructions_paragraph, footer_layout[0]);
     f.render_widget(version_paragraph, footer_layout[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fuzzy_filter_home_items;
+    use crate::utils::IconEntry;
+
+    fn sample_items() -> Vec<IconEntry> {
+        vec![
+            IconEntry {
+                name: "IconMountain".to_string(),
+                file_path: "./lucide:mountain.svg".to_string(),
+            },
+            IconEntry {
+                name: "IconHeart".to_string(),
+                file_path: "./lucide:heart.svg".to_string(),
+            },
+            IconEntry {
+                name: "IconHouse".to_string(),
+                file_path: "./lucide:house.svg".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn home_search_matches_fuzzy_name_query() {
+        let filtered = fuzzy_filter_home_items(&sample_items(), "ihrt");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "IconHeart");
+    }
+
+    #[test]
+    fn home_search_matches_fuzzy_file_path_query() {
+        let filtered = fuzzy_filter_home_items(&sample_items(), "lchrt");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "IconHeart");
+    }
+
+    #[test]
+    fn home_search_keeps_all_items_for_empty_query() {
+        let items = sample_items();
+        let filtered = fuzzy_filter_home_items(&items, "   ");
+        assert_eq!(filtered.len(), items.len());
+        assert_eq!(filtered[0].name, items[0].name);
+        assert_eq!(filtered[1].name, items[1].name);
+        assert_eq!(filtered[2].name, items[2].name);
+    }
 }
