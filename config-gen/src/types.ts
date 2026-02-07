@@ -1,4 +1,4 @@
-export type IconmatePreset = "" | "react" | "svelte" | "solid" | "vue" | "emptysvg";
+export type IconmatePreset = "normal" | "react" | "svelte" | "solid" | "vue" | "emptysvg";
 
 /**
  * Project-level Iconmate config loaded from `iconmate.config.json`.
@@ -11,8 +11,8 @@ export interface IconmateLocalConfig {
   folder?: string;
 
   /**
-   * Output preset. Empty string means plain `.svg` mode.
-   * Default: `""`.
+   * Output preset. `normal` means plain `.svg` mode.
+   * Default: `"normal"`.
    */
   preset?: IconmatePreset;
 

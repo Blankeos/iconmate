@@ -227,19 +227,14 @@ impl AddPopupState {
 
 impl App {
     pub fn init_add_popup(&mut self) {
-        let configured_preset = self.config.preset.as_ref().and_then(|preset_str| {
-            PRESETS_OPTIONS
-                .iter()
-                .find(|option| option.preset.to_str() == preset_str)
-                .map(|option| option.preset.clone())
-        });
-        let selected_index = configured_preset
-            .as_ref()
-            .and_then(|preset| {
-                PRESETS_OPTIONS
-                    .iter()
-                    .position(|option| option.preset == *preset)
-            })
+        let configured_preset = PRESETS_OPTIONS
+            .iter()
+            .find(|option| option.preset.to_str() == self.config.preset.as_str())
+            .map(|option| option.preset.clone())
+            .unwrap_or(Preset::Normal);
+        let selected_index = PRESETS_OPTIONS
+            .iter()
+            .position(|option| option.preset == configured_preset)
             .unwrap_or(0);
 
         self.app_focus = AppFocus::AddPopup;
@@ -247,7 +242,7 @@ impl App {
             // folder: None,
             icon: None,
             name: None,
-            preset: configured_preset,
+            preset: Some(configured_preset),
             filename: None,
 
             preset_index: selected_index,
@@ -293,14 +288,19 @@ impl App {
 
             state.apply_icon_based_defaults();
 
-            if state.preset.is_none()
-                && !state.presets_filtered.is_empty()
-                && state.preset_index < state.presets_filtered.len()
-            {
-                state.preset = Some(state.presets_filtered[state.preset_index].preset.clone());
-            }
-
-            let preset = state.preset.clone();
+            let preset = state
+                .preset
+                .clone()
+                .or_else(|| {
+                    if !state.presets_filtered.is_empty()
+                        && state.preset_index < state.presets_filtered.len()
+                    {
+                        Some(state.presets_filtered[state.preset_index].preset.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(Preset::Normal);
             let icon = state.inputs[ICON_FIELD_IDX]
                 .lines()
                 .join("\n")
@@ -340,8 +340,9 @@ impl App {
             );
         }
 
-        if icon.is_empty() && preset.is_none() {
-            return Err("Choose a preset or provide an icon source first.".to_string());
+        let requires_icon = matches!(preset, Preset::Normal);
+        if icon.is_empty() && requires_icon {
+            return Err("Provide an icon source or choose a non-normal preset first.".to_string());
         }
 
         let mut command = Command::new(std::env::current_exe().map_err(|error| error.to_string())?);
@@ -359,9 +360,7 @@ impl App {
                     .unwrap_or(DEFAULT_OUTPUT_LINE_TEMPLATE),
             );
 
-        if let Some(preset) = preset {
-            command.arg("--preset").arg(preset.to_str());
-        }
+        command.arg("--preset").arg(preset.to_str());
 
         if !icon.is_empty() {
             command.arg("--icon").arg(icon);
@@ -473,7 +472,7 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                     ListItem::new(format!(
                         //  https://stackoverflow.com/questions/50458144/what-is-the-easiest-way-to-pad-a-string-with-0-to-the-left
                         "{:<8} - {}",
-                        format!("{:?}", p.preset),
+                        p.preset.to_str(),
                         p.description
                     ))
                 })
@@ -585,7 +584,7 @@ mod tests {
     fn test_config(folder: String) -> crate::app_state::AppConfig {
         crate::app_state::AppConfig {
             folder,
-            preset: None,
+            preset: "normal".to_string(),
             template: None,
             svg_viewer_cmd: None,
             svg_viewer_cmd_source: "test".to_string(),

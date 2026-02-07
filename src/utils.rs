@@ -6,9 +6,13 @@ use crate::iconify::IconifyClient;
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Hash)]
 pub enum Preset {
+    /// Use the icon source as a regular SVG.
+    #[value(name = "normal")]
+    Normal,
+
     /// Use a blank SVG.
     #[value(name = "emptysvg")]
-    Svg,
+    EmptySvg,
 
     /// React Component .tsx
     #[value(name = "react")]
@@ -30,7 +34,8 @@ pub enum Preset {
 impl Preset {
     pub fn to_str(&self) -> &'static str {
         match self {
-            Preset::Svg => "emptysvg",
+            Preset::Normal => "normal",
+            Preset::EmptySvg => "emptysvg",
             Preset::React => "react",
             Preset::Svelte => "svelte",
             Preset::Solid => "solid",
@@ -46,10 +51,20 @@ pub struct PresetOption {
     pub description: &'static str,
 }
 
+impl std::fmt::Display for PresetOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} - {}", self.preset.to_str(), self.description)
+    }
+}
+
 pub const PRESETS_OPTIONS: &[PresetOption] = &[
     PresetOption {
-        preset: Preset::Svg,
-        description: "Outputs an svg (.svg)",
+        preset: Preset::Normal,
+        description: "Outputs an svg from an icon source (.svg)",
+    },
+    PresetOption {
+        preset: Preset::EmptySvg,
+        description: "Outputs a blank svg placeholder (.svg)",
     },
     PresetOption {
         preset: Preset::React,
@@ -361,7 +376,8 @@ pub fn _make_svg_filename(
 pub fn filename_from_preset(file_name: Option<String>, preset: Option<Preset>) -> String {
     if let Some(preset) = preset {
         let ext = match preset {
-            Preset::Svg => "svg",
+            Preset::Normal => "svg",
+            Preset::EmptySvg => "svg",
             Preset::React => "tsx",
             Preset::Svelte => "svelte",
             Preset::Solid => "tsx",
@@ -421,7 +437,6 @@ pub fn get_existing_icons(folder_path: &str) -> anyhow::Result<Vec<IconEntry>> {
 pub fn parse_export_line_ts(line: &str) -> Option<IconEntry> {
     use std::path::Path;
 
-    // Log the line
     let line = line.trim();
 
     // Skip empty lines and comments
@@ -429,34 +444,46 @@ pub fn parse_export_line_ts(line: &str) -> Option<IconEntry> {
         return None;
     }
 
-    // Example line:   export { default as IconGitHub } from "./devicon:github.svg";
-    // We look for:    export { default as <Name> } from "<file_path>";
-    let parts: Vec<&str> = line.splitn(5, ' ').collect();
-    if parts.len() >= 5
-        && parts[0] == "export"
-        && parts[1] == "{"
-        && parts[3] == "as"
-        && parts[2] == "default"
-    {
-        if let Some(name_end) = line.find('}') {
-            let name = line["export { default as ".len()..name_end].trim();
-            if let Some(from_start) = line[name_end..].find("from \"") {
-                let from_start = name_end + from_start + "from \"".len();
-                if let Some(path_end) = line[from_start..].find('"') {
-                    let relative_path = &line[from_start..from_start + path_end];
-                    let abs_path = Path::new(relative_path)
-                        .canonicalize()
-                        .unwrap_or_else(|_| Path::new(relative_path).to_path_buf());
-
-                    return Some(IconEntry {
-                        name: name.to_string(),
-                        file_path: abs_path.to_string_lossy().to_string(),
-                    });
-                }
-            }
-        }
+    // Example lines:
+    // export { default as IconGitHub } from "./devicon:github.svg";
+    // export { default as IconGitHub } from './devicon:github.svg';
+    if !line.starts_with("export") {
+        return None;
     }
-    None
+
+    let open_brace_idx = line.find('{')?;
+    let close_brace_idx = line[open_brace_idx + 1..].find('}')? + open_brace_idx + 1;
+
+    let inside_braces = line[open_brace_idx + 1..close_brace_idx].trim();
+    let mut tokens = inside_braces.split_whitespace();
+    if tokens.next()? != "default" || tokens.next()? != "as" {
+        return None;
+    }
+
+    let name = tokens.next()?.trim_end_matches(',');
+    if name.is_empty() {
+        return None;
+    }
+
+    let after_brace = line[close_brace_idx + 1..].trim_start();
+    let after_from = after_brace.strip_prefix("from")?.trim_start();
+    let quote_char = after_from.chars().next()?;
+    if quote_char != '"' && quote_char != '\'' {
+        return None;
+    }
+
+    let path_start = quote_char.len_utf8();
+    let path_end = after_from[path_start..].find(quote_char)?;
+    let relative_path = &after_from[path_start..path_start + path_end];
+
+    let abs_path = Path::new(relative_path)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(relative_path).to_path_buf());
+
+    Some(IconEntry {
+        name: name.to_string(),
+        file_path: abs_path.to_string_lossy().to_string(),
+    })
 }
 
 // FUTURE:
@@ -705,6 +732,37 @@ mod tests {
             ),
             Some(("ArrowLeft".to_string(), "mdi:arrow-left".to_string()))
         );
+    }
+
+    #[test]
+    fn parses_typescript_export_with_double_quotes() {
+        let parsed =
+            parse_export_line_ts("export { default as IconGithub } from \"./mdi:github.svg\";")
+                .expect("export with double quotes should parse");
+
+        assert_eq!(parsed.name, "IconGithub");
+        assert_eq!(parsed.file_path, "./mdi:github.svg");
+    }
+
+    #[test]
+    fn parses_typescript_export_with_single_quotes() {
+        let parsed =
+            parse_export_line_ts("export { default as IconGithub } from './mdi:github.svg';")
+                .expect("export with single quotes should parse");
+
+        assert_eq!(parsed.name, "IconGithub");
+        assert_eq!(parsed.file_path, "./mdi:github.svg");
+    }
+
+    #[test]
+    fn parses_typescript_export_with_extra_spacing() {
+        let parsed = parse_export_line_ts(
+            "export {  default   as   IconGithub } from   './mdi:github.svg';",
+        )
+        .expect("export with variable spacing should parse");
+
+        assert_eq!(parsed.name, "IconGithub");
+        assert_eq!(parsed.file_path, "./mdi:github.svg");
     }
 
     #[test]

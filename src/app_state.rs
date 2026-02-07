@@ -45,7 +45,7 @@ pub enum AppEvent {
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub folder: String,
-    pub preset: Option<String>,
+    pub preset: String,
     pub template: Option<String>,
     pub svg_viewer_cmd: Option<String>,
     pub svg_viewer_cmd_source: String,

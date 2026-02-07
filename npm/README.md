@@ -219,7 +219,7 @@ Contributions are welcome—pull requests for bug fixes, new framework presets, 
 
 - [x] An empty command. Creates an .svg, adds it to the index.ts with a name you can specify.
 - [x] Paste an actual svg instead of an icon `name`.
-- [x] Just a `--preset=svg,react,solid,svelte,vue` - which basically overrides templates. Default is `svg`.
+- [x] Presets (`normal`, `react`, `solid`, `svelte`, `vue`, `emptysvg`) override output templates and file types.
 - [x] Prompt Mode via `iconmate` - Interactive mode so you won't need to pass arguments.
 - [x] Delete an icon using `iconmate delete`
 - [ ] Other frameworks i.e. --preset=flutter or Go/Rust GUI apps? (Not sure how they work yet though).

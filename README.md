@@ -92,7 +92,7 @@ just config-schema
 {
   "$schema": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json",
   "folder": "src/assets/icons",
-  "preset": "",
+  "preset": "normal",
   "output_line_template": "export { default as Icon%name% } from './%icon%%ext%';",
   "svg_view_cmd": "zed %filename%"
 }
@@ -103,13 +103,13 @@ Use the raw URL for `$schema` so editors can fetch JSON directly.
 Local config keys:
 
 - `folder` (default: `src/assets/icons`)
-- `preset` (default: `""`, meaning plain `.svg` mode)
+- `preset` (default: `normal`, meaning plain `.svg` mode)
 - `output_line_template` (default: `export { default as Icon%name% } from './%icon%%ext%';`)
 - `svg_view_cmd` (supports `%filename%` token)
 
 Allowed `preset` values:
 
-- `""` (plain SVG mode)
+- `normal` (plain SVG mode)
 - `react`
 - `svelte`
 - `solid`
@@ -329,7 +329,7 @@ Contributions are welcome—pull requests for bug fixes, new framework presets, 
 
 - [x] An empty command. Creates an .svg, adds it to the index.ts with a name you can specify.
 - [x] Paste an actual svg instead of an icon `name`.
-- [x] Just a `--preset=svg,react,solid,svelte,vue` - which basically overrides templates. Default is `svg`.
+- [x] Presets (`normal`, `react`, `solid`, `svelte`, `vue`, `emptysvg`) override output templates and file types.
 - [x] Prompt Mode via `iconmate` - Interactive mode so you won't need to pass arguments.
 - [x] Delete an icon using `iconmate delete`
 - [x] An interactive TUI instead of prompt-mode.

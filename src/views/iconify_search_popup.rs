@@ -874,7 +874,7 @@ mod tests {
 
         let config = AppConfig {
             folder: folder.to_string_lossy().into_owned(),
-            preset: None,
+            preset: "normal".to_string(),
             template: None,
             svg_viewer_cmd: None,
             svg_viewer_cmd_source: "test".to_string(),

@@ -1,18 +1,18 @@
 import * as z from "zod";
 
 export const DEFAULT_FOLDER = "src/assets/icons";
-export const DEFAULT_PRESET = "";
+export const DEFAULT_PRESET = "normal";
 export const DEFAULT_OUTPUT_LINE_TEMPLATE =
   "export { default as Icon%name% } from './%icon%%ext%';";
 
-export const PRESET_VALUES = ["", "react", "svelte", "solid", "vue", "emptysvg"] as const;
+export const PRESET_VALUES = ["normal", "react", "svelte", "solid", "vue", "emptysvg"] as const;
 
 export const PresetSchema = z.enum(PRESET_VALUES).meta({
   title: "Preset",
   description:
-    "Icon output preset. Empty string means plain SVG mode. Other values are framework or emptysvg presets.",
+    "Icon output preset. 'normal' means plain SVG mode. Other values are framework or emptysvg presets.",
   default: DEFAULT_PRESET,
-  examples: ["", "react", "solid", "emptysvg"]
+  examples: ["normal", "react", "solid", "emptysvg"]
 });
 
 export const SvgViewCommandSchema = z.string().min(1).meta({

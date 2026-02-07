@@ -238,3 +238,65 @@ fn test_add_command_preset_empty_svg() {
         "SVG should contain the empty SVG template"
     );
 }
+
+#[test]
+fn test_add_command_preset_normal_with_icon() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let output = Command::new(binary_path)
+        .args(&[
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "normal",
+            "--icon",
+            "heroicons:heart",
+            "--name",
+            "Heart",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Command failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let svg_file = test_folder.join("heroicons:heart.svg");
+    assert!(svg_file.exists(), "heroicons:heart.svg should be created");
+}
+
+#[test]
+fn test_add_command_preset_normal_requires_icon() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let output = Command::new(binary_path)
+        .args(&[
+            "add",
+            "--folder",
+            test_folder.to_str().unwrap(),
+            "--preset",
+            "normal",
+            "--name",
+            "NoIcon",
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success(), "Command should fail without icon");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--icon argument is required when --preset is normal"),
+        "stderr should explain normal preset needs an icon"
+    );
+}

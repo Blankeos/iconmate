@@ -78,7 +78,7 @@ pub fn render_help_popup(f: &mut Frame, app: &App) {
     let status = Paragraph::new(format!(
         " Folder: {}\n✦ Preset: {}\n[O] Viewer source: {}",
         app.config.folder,
-        app.config.preset.as_deref().unwrap_or("<none>"),
+        app.config.preset.as_str(),
         app.config.svg_viewer_cmd_source
     ))
     .alignment(Alignment::Left)

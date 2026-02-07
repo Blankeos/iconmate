@@ -10,7 +10,7 @@ mod views;
 use crate::iconify::{IconifyClient, IconifyCollectionResponse, IconifySearchResponse};
 use crate::utils::{
     _determine_icon_source_type, _icon_source_to_svg, _make_svg_filename, IconEntry,
-    IconSourceType, Preset, default_name_and_filename_from_icon_source,
+    IconSourceType, PRESETS_OPTIONS, Preset, default_name_and_filename_from_icon_source,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
@@ -370,20 +370,22 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     // eprintln!("  preset: {:?}", config.preset);
     // eprintln!("}}");
 
+    let effective_preset = config.preset.clone().unwrap_or(Preset::Normal);
+
     // Determine SVG content and filename stem based on a valid combination of arguments.
     let (svg_content, file_stem_str, ext, output_line_template) = match (
         &config.icon,
-        &config.preset,
+        effective_preset,
     ) {
         // Case 1: Icon is provided AND the preset is EmptySvg. This is the only mutual exclusivity.
-        (Some(_), Some(Preset::Svg)) => {
+        (Some(_), Preset::EmptySvg) => {
             anyhow::bail!(
                 "The --icon argument cannot be used with the --preset emptysvg. Please provide only one or the other."
             );
         }
 
         // Case 2: Only a preset is provided.
-        (None, Some(Preset::Svg)) => {
+        (None, Preset::EmptySvg) => {
             let content = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"></svg>"#.to_string();
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
@@ -400,7 +402,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         }
 
         // Case 3: React
-        (icon_source, Some(Preset::React)) => {
+        (icon_source, Preset::React) => {
             let content = _icon_source_to_svg(icon_source, Some("{...props}"), true).await?;
 
             // Wrap the SVG in a React component template
@@ -424,7 +426,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         }
 
         // Case 4: Svelte
-        (icon_source, Some(Preset::Svelte)) => {
+        (icon_source, Preset::Svelte) => {
             let content = _icon_source_to_svg(icon_source, Some("{...props}"), false).await?;
 
             // Wrap the SVG in a Svelte component template
@@ -448,7 +450,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         }
 
         // Case 5: Solid
-        (icon_source, Some(Preset::Solid)) => {
+        (icon_source, Preset::Solid) => {
             let content = _icon_source_to_svg(icon_source, Some("{...props}"), true).await?;
 
             // Wrap the SVG in a Solid component template
@@ -472,7 +474,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         }
 
         // Case 6: Vue
-        (icon_source, Some(Preset::Vue)) => {
+        (icon_source, Preset::Vue) => {
             let content = _icon_source_to_svg(icon_source, Some("v-bind=\"$props\""), true).await?;
 
             // Wrap the SVG in a Vue component template
@@ -495,8 +497,8 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
             ))
         }
 
-        // Case 7: Only an icon is provided.
-        (Some(icon_source), None) => {
+        // Case 7: Only an icon is provided in `normal` mode.
+        (Some(icon_source), Preset::Normal) => {
             let content = _icon_source_to_svg(&Some(icon_source.clone()), None, false).await?;
 
             let (file_stem, ext) = _make_svg_filename(
@@ -508,9 +510,9 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
             Ok((content, file_stem, ext, config.output_line_template.clone()))
         }
 
-        // Case 8: Neither icon nor preset is provided.
-        (None, None) => {
-            anyhow::bail!("Either an --icon or a --preset must be provided.");
+        // Case 8: Normal mode still requires an icon source.
+        (None, Preset::Normal) => {
+            anyhow::bail!("The --icon argument is required when --preset is normal.");
         }
     }?;
 
@@ -574,61 +576,14 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
 
     let preset = match &cli.preset {
         Some(p) => {
-            println!("> ✦ Preset: emptysvg");
+            println!("> ✦ Preset: {}", p.to_str());
             Some(p.clone())
         }
         None => {
-            #[derive(Debug, Copy, Clone)]
-            struct PresetOpt {
-                key: &'static str,
-                desc: &'static str,
-            }
-
-            impl std::fmt::Display for PresetOpt {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    write!(f, "{} — {}", self.key, self.desc)
-                }
-            }
-
-            let preset_opts = vec![
-                PresetOpt {
-                    key: "normal",
-                    desc: "Plain svg (.svg)",
-                },
-                PresetOpt {
-                    key: "emptysvg",
-                    desc: "A blank SVG file (.svg)",
-                },
-                PresetOpt {
-                    key: "react",
-                    desc: "React Component (.tsx)",
-                },
-                PresetOpt {
-                    key: "svelte",
-                    desc: "Svelte Component (.svelte)",
-                },
-                PresetOpt {
-                    key: "solid",
-                    desc: "Solid Component (.tsx)",
-                },
-                PresetOpt {
-                    key: "vue",
-                    desc: "Vue Component (.vue)",
-                },
-            ];
-            let preset_raw = Select::new("✦ Preset", preset_opts)
+            let preset_opt = Select::new("✦ Preset", PRESETS_OPTIONS.to_vec())
                 .with_render_config(render_config.clone())
                 .prompt()?;
-
-            // My rust skill issue doesn't know how to return this as just 1 item.
-            match preset_raw.key {
-                "emptysvg" => Some(Preset::Svg),
-                "react" => Some(Preset::React),
-                "svelte" => Some(Preset::Svelte),
-                "solid" => Some(Preset::Solid),
-                "vue" => Some(Preset::Vue),
-                _ => None,
-            }
+            Some(preset_opt.preset)
         }
     };
 
@@ -638,7 +593,7 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
             Some(i.clone())
         }
         None => {
-            if matches!(preset, Some(Preset::Svg)) {
+            if matches!(preset, Some(Preset::EmptySvg)) {
                 None
             } else {
                 let icon_raw = Text::new(

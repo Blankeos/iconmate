@@ -2,13 +2,11 @@ use anyhow::Context;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
-use crate::utils::Preset;
+use crate::utils::{PRESETS_OPTIONS, Preset};
 
 pub const DEFAULT_FOLDER: &str = "src/assets/icons";
 pub const DEFAULT_OUTPUT_LINE_TEMPLATE: &str =
     "export { default as Icon%name% } from './%icon%%ext%';";
-
-const PRESET_VALUES: [&str; 6] = ["", "react", "svelte", "solid", "vue", "emptysvg"];
 
 #[derive(Debug, Clone, Default)]
 struct LocalConfigFile {
@@ -32,7 +30,7 @@ struct LoadedConfigFile<T> {
 #[derive(Debug, Clone)]
 pub struct ResolvedTuiConfig {
     pub folder: String,
-    pub preset: Option<String>,
+    pub preset: String,
     pub output_line_template: String,
     pub svg_viewer_cmd: Option<String>,
     pub svg_viewer_cmd_source: String,
@@ -82,13 +80,7 @@ pub fn resolve_tui_config(
                 .as_ref()
                 .and_then(|config| config.value.preset.clone())
         })
-        .and_then(|value| {
-            if value.trim().is_empty() {
-                None
-            } else {
-                Some(value)
-            }
-        });
+        .unwrap_or_else(|| "normal".to_string());
 
     let output_line_template = cli_output_line_template
         .cloned()
@@ -234,13 +226,26 @@ fn parse_local_value(
 
     let folder = read_string_field(&object, path, "folder", false)?;
 
-    let preset = read_string_field(&object, path, "preset", true)?;
+    let mut preset = read_string_field(&object, path, "preset", true)?;
+    if matches!(preset.as_deref(), Some("")) {
+        warnings.push(format!(
+            "Config key 'preset' in {} uses deprecated empty value; use 'normal' instead.",
+            path.display()
+        ));
+        preset = Some("normal".to_string());
+    }
+
     if let Some(value) = preset.as_deref() {
-        if !PRESET_VALUES.contains(&value) {
+        let valid_presets = PRESETS_OPTIONS
+            .iter()
+            .map(|option| option.preset.to_str())
+            .collect::<Vec<_>>();
+
+        if !valid_presets.contains(&value) {
             anyhow::bail!(
                 "Invalid config at {}: key 'preset' must be one of [{}], got '{}'.",
                 path.display(),
-                PRESET_VALUES.join(", "),
+                valid_presets.join(", "),
                 value
             );
         }
@@ -389,5 +394,23 @@ mod tests {
         )
         .expect_err("invalid preset should fail validation");
         assert!(error.to_string().contains("key 'preset' must be one of"));
+    }
+
+    #[test]
+    fn normalizes_empty_local_preset_to_normal_with_warning() {
+        let value: Value = serde_json::json!({
+            "preset": ""
+        });
+        let mut warnings = Vec::new();
+        let parsed = parse_local_value(
+            value,
+            Path::new("/tmp/iconmate.config.jsonc"),
+            &mut warnings,
+        )
+        .expect("empty preset should be normalized");
+
+        assert_eq!(parsed.preset.as_deref(), Some("normal"));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("deprecated empty value"));
     }
 }

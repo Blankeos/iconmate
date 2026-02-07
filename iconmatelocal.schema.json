@@ -16,7 +16,7 @@
     "preset": {
       "type": "string",
       "enum": [
-        "",
+        "normal",
         "react",
         "svelte",
         "solid",
@@ -24,10 +24,10 @@
         "emptysvg"
       ],
       "title": "Preset",
-      "description": "Icon output preset. Empty string means plain SVG mode. Other values are framework or emptysvg presets.",
-      "default": "",
+      "description": "Icon output preset. 'normal' means plain SVG mode. Other values are framework or emptysvg presets.",
+      "default": "normal",
       "examples": [
-        "",
+        "normal",
         "react",
         "solid",
         "emptysvg"
