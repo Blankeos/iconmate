@@ -233,6 +233,14 @@ iconmate add --folder src/assets/icons --icon heroicons:heart --name Heart --out
 iconmate delete --folder src/assets/icons
 ```
 
+### List current icons
+
+```bash
+iconmate list --folder src/assets/icons
+# or use the default folder (src/assets/icons)
+iconmate list
+```
+
 ### Iconify API Commands
 
 ```bash
