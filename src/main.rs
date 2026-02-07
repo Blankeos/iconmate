@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// A CLI tool to fetch icons and save them into your Vite, NextJS, or similar project.
 #[derive(Parser, Debug)]
@@ -519,19 +519,33 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     let svg_file_name = format!("{}{}", file_stem_str, ext);
     let svg_file_path = folder_path.join(&svg_file_name);
 
+    // Update or create index.ts
+    let index_ts_path = folder_path.join("index.ts");
+    let rendered_export_statement = output_line_template
+        .replace("%name%", icon_alias)
+        .replace("%icon%", &file_stem_str)
+        .replace("%ext%", ext);
+    let export_line = format!("{}\n", rendered_export_statement);
+
+    if index_ts_path.exists() {
+        let existing_index = fs::read_to_string(&index_ts_path)?;
+        validate_new_export_conflicts(
+            &existing_index,
+            &rendered_export_statement,
+            &index_ts_path,
+        )?;
+    }
+
+    if svg_file_path.exists() {
+        anyhow::bail!(
+            "Target icon file already exists: {}. Choose a different --filename (or --name when filename is omitted).",
+            svg_file_path.display()
+        );
+    }
+
     // Save the SVG content to the file
     fs::write(&svg_file_path, &svg_content)?;
     println!("Successfully saved icon to: {}", svg_file_path.display());
-
-    // Update or create index.ts
-    let index_ts_path = folder_path.join("index.ts");
-    let export_line = format!(
-        "{}\n",
-        output_line_template
-            .replace("%name%", icon_alias)
-            .replace("%icon%", &file_stem_str)
-            .replace("%ext%", ext)
-    );
 
     if index_ts_path.exists() {
         let mut contents = fs::read_to_string(&index_ts_path)?;
@@ -558,6 +572,47 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         let mut file = fs::File::create(&index_ts_path)?;
         file.write_all(export_line.as_bytes())?;
         println!("Created and wrote export to: {}", index_ts_path.display());
+    }
+
+    Ok(())
+}
+
+fn normalize_export_target(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn validate_new_export_conflicts(
+    index_contents: &str,
+    rendered_export_statement: &str,
+    index_path: &Path,
+) -> anyhow::Result<()> {
+    let Some(new_entry) = crate::utils::parse_export_line_ts(rendered_export_statement) else {
+        return Ok(());
+    };
+
+    let new_target = normalize_export_target(&new_entry.file_path);
+    for existing in collect_icons_from_index_contents(index_contents) {
+        if existing.name == new_entry.name {
+            anyhow::bail!(
+                "Icon alias '{}' already exists in {}. Choose a different --name or rename the existing export.",
+                new_entry.name,
+                index_path.display()
+            );
+        }
+
+        if normalize_export_target(&existing.file_path) == new_target {
+            anyhow::bail!(
+                "Export target '{}' already exists in {}. Choose a different --filename (or --name when filename is omitted).",
+                new_entry.file_path,
+                index_path.display()
+            );
+        }
     }
 
     Ok(())
@@ -684,6 +739,25 @@ impl std::fmt::Display for IconEntry {
     }
 }
 
+fn collect_icons_from_index_contents(contents: &str) -> Vec<IconEntry> {
+    let mut icons = Vec::new();
+
+    for line in contents.lines() {
+        for statement in line.split(';') {
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
+            }
+
+            if let Some(icon_entry) = crate::utils::parse_export_line_ts(statement) {
+                icons.push(icon_entry);
+            }
+        }
+    }
+
+    icons
+}
+
 fn remove_selected_exports_from_index(contents: &str, selected_icons: &[IconEntry]) -> String {
     use std::collections::HashSet;
 
@@ -692,14 +766,32 @@ fn remove_selected_exports_from_index(contents: &str, selected_icons: &[IconEntr
         .map(|icon| (icon.name.clone(), icon.file_path.clone()))
         .collect::<HashSet<_>>();
 
-    let kept_lines = contents
-        .lines()
-        .filter(|line| {
-            !crate::utils::parse_export_line_ts(line)
-                .map(|entry| selected.contains(&(entry.name, entry.file_path)))
-                .unwrap_or(false)
-        })
-        .collect::<Vec<_>>();
+    let mut kept_lines = Vec::<String>::new();
+    for line in contents.lines() {
+        let mut parsed_export_in_line = false;
+
+        for statement in line.split(';') {
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
+            }
+
+            let Some(entry) = crate::utils::parse_export_line_ts(statement) else {
+                continue;
+            };
+
+            parsed_export_in_line = true;
+            if selected.contains(&(entry.name, entry.file_path)) {
+                continue;
+            }
+
+            kept_lines.push(format!("{statement};"));
+        }
+
+        if !parsed_export_in_line {
+            kept_lines.push(line.to_string());
+        }
+    }
 
     let mut updated = kept_lines.join("\n");
     if contents.ends_with('\n') {
@@ -748,13 +840,7 @@ async fn run_delete_prompt_mode(
 
     // Step 3: Read and parse index.ts
     let contents = fs::read_to_string(&index_ts_path)?;
-    let mut icons = Vec::new();
-
-    for line in contents.lines() {
-        if let Some(icon_entry) = crate::utils::parse_export_line_ts(line) {
-            icons.push(icon_entry);
-        }
-    }
+    let icons = collect_icons_from_index_contents(&contents);
 
     if icons.is_empty() {
         println!("No icons found in index.ts");
@@ -890,6 +976,32 @@ mod tests {
     }
 
     #[test]
+    fn collect_icons_reads_multiple_exports_on_same_line() {
+        let contents = "export { default as IconOne } from './one.svg';export { default as IconTwo } from './two.svg';\n";
+
+        let icons = collect_icons_from_index_contents(contents);
+
+        assert_eq!(icons.len(), 2);
+        assert!(icons.iter().any(|icon| icon.name == "IconOne"));
+        assert!(icons.iter().any(|icon| icon.name == "IconTwo"));
+    }
+
+    #[test]
+    fn remove_selected_exports_removes_selected_from_concatenated_line() {
+        let contents = "export { default as IconOne } from './one.svg';export { default as IconTwo } from './two.svg';\n";
+
+        let selected_icons = vec![
+            crate::utils::parse_export_line_ts("export { default as IconTwo } from './two.svg';")
+                .expect("line should parse"),
+        ];
+
+        let updated = remove_selected_exports_from_index(contents, &selected_icons);
+
+        assert!(updated.contains("IconOne"));
+        assert!(!updated.contains("IconTwo"));
+    }
+
+    #[test]
     fn resolve_delete_folder_prefers_subcommand_folder() {
         let cli_folder = PathBuf::from("src/assets/icons");
         let command_folder = PathBuf::from("icons/from/delete");
@@ -922,5 +1034,44 @@ mod tests {
 
         let resolved = resolve_delete_folder(&cli, None);
         assert_eq!(resolved, Some(&cli_folder));
+    }
+
+    #[test]
+    fn validate_new_export_conflicts_rejects_duplicate_alias() {
+        let existing = "export { default as IconHeart } from './heart.svg';\n";
+        let error = validate_new_export_conflicts(
+            existing,
+            "export { default as IconHeart } from './star.svg';",
+            Path::new("src/assets/icons/index.ts"),
+        )
+        .expect_err("duplicate alias should fail");
+
+        assert!(error.to_string().contains("Icon alias 'IconHeart' already exists"));
+    }
+
+    #[test]
+    fn validate_new_export_conflicts_rejects_duplicate_target() {
+        let existing = "export { default as IconHeart } from './heart.svg';\n";
+        let error = validate_new_export_conflicts(
+            existing,
+            "export { default as IconStar } from './heart.svg';",
+            Path::new("src/assets/icons/index.ts"),
+        )
+        .expect_err("duplicate target should fail");
+
+        assert!(error
+            .to_string()
+            .contains("Export target './heart.svg' already exists"));
+    }
+
+    #[test]
+    fn validate_new_export_conflicts_allows_distinct_alias_and_target() {
+        let existing = "export { default as IconHeart } from './heart.svg';\n";
+        validate_new_export_conflicts(
+            existing,
+            "export { default as IconStar } from './star.svg';",
+            Path::new("src/assets/icons/index.ts"),
+        )
+        .expect("distinct alias and target should be accepted");
     }
 }
