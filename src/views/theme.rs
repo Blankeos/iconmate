@@ -1,15 +1,14 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
-    Frame,
 };
 
 pub const BASE_BG: Color = Color::Rgb(10, 14, 22);
 pub const PANEL_BG: Color = Color::Reset;
 pub const INPUT_BG: Color = Color::Reset;
-pub const INPUT_BG_FOCUSED: Color = Color::Rgb(33, 44, 63);
 pub const LOGO_GREEN: Color = Color::Rgb(74, 222, 128);
 pub const TAB_BG: Color = Color::Reset;
 pub const TAB_BG_ACTIVE: Color = LOGO_GREEN;

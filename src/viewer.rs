@@ -116,8 +116,8 @@ fn open_with_os_default(svg_path: &Path) -> anyhow::Result<()> {
         }
 
         let open_args = vec![file_name];
-        return spawn_background("open", &open_args)
-            .context("Failed to open icon via macOS Quick Look/open");
+        spawn_background("open", &open_args)
+            .context("Failed to open icon via macOS Quick Look/open")
     }
 
     #[cfg(target_os = "linux")]
@@ -153,7 +153,7 @@ fn iconify_web_preview_url(svg_path: &Path) -> Option<String> {
 pub fn open_url_in_browser(url: &str) -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     {
-        return spawn_background("open", &[url.to_string()]).context("Failed to open URL via open");
+        spawn_background("open", &[url.to_string()]).context("Failed to open URL via open")
     }
 
     #[cfg(target_os = "linux")]

@@ -89,7 +89,7 @@ impl App {
 
             should_quit: false,
             tx,
-            rx: rx,
+            rx,
 
             selected_index: 0,
             filtered_items: Vec::new(),
@@ -110,10 +110,7 @@ impl App {
 
     pub fn init_icons(&mut self) {
         // Try to read the current project's export file
-        self.items = match crate::utils::get_existing_icons(&self.config.folder) {
-            Ok(icons) => icons,
-            Err(_) => Vec::new(),
-        };
+        self.items = crate::utils::get_existing_icons(&self.config.folder).unwrap_or_default();
         self.filtered_items = self.items.clone();
     }
 

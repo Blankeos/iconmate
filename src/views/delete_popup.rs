@@ -1,9 +1,9 @@
 use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
-use ratatui::Frame;
 use tui_textarea::{Input, Key};
 
 #[derive(Debug)]

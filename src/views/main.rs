@@ -1,12 +1,12 @@
 use nucleo_matcher::{
-    pattern::{CaseMatching, Normalization, Pattern},
     Config, Matcher,
+    pattern::{CaseMatching, Normalization, Pattern},
 };
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Rect},
     style::Style,
     widgets::{Block, Paragraph},
-    Frame,
 };
 use tui_textarea::{Input, Key, TextArea};
 
@@ -90,133 +90,123 @@ impl MainState {
         self.status_message = None;
         self.status_is_error = false;
     }
-
-    pub fn handlekeys_search(&mut self, input: &Input, app: &mut App) {
-        match input.key {
-            Key::Esc => {
-                self.main_state_focus = MainStateFocus::Normal;
-                app.app_focus = AppFocus::Main;
-                self.search_textarea = TextArea::default();
-                self.search_items_value = String::from("");
-                self.update_filtered_items(app);
-            }
-            Key::Enter => {
-                app.app_focus = AppFocus::Main;
-                self.main_state_focus = MainStateFocus::Normal;
-            }
-            Key::Up => {
-                let item_count = if self.search_items_value.is_empty() {
-                    app.items.len()
-                } else {
-                    app.filtered_items.len()
-                };
-                if item_count == 0 {
-                    app.selected_index = 0;
-                } else if app.selected_index > 0 {
-                    app.selected_index -= 1;
-                } else {
-                    app.selected_index = item_count - 1;
-                }
-            }
-            Key::Down => {
-                let item_count = if self.search_items_value.is_empty() {
-                    app.items.len()
-                } else {
-                    app.filtered_items.len()
-                };
-                if item_count == 0 {
-                    app.selected_index = 0;
-                } else if app.selected_index < item_count.saturating_sub(1) {
-                    app.selected_index += 1;
-                } else {
-                    app.selected_index = 0;
-                }
-            }
-            _ => {
-                self.search_textarea.input(input.clone());
-                self.search_items_value = self.search_textarea.lines().join("");
-                self.update_filtered_items(app);
-            }
-        }
-    }
-
-    fn handlekeys_normal(&mut self, input: &Input, app: &mut App) {
-        match input.key {
-            Key::Char('q') => app.should_quit = true,
-            Key::Char('a') => {
-                app.init_add_popup();
-            }
-            Key::Char('i') => {
-                app.init_iconify_search_popup();
-            }
-            Key::Char('d') => {
-                app.init_delete_popup();
-            }
-            Key::Char('r') => {
-                app.init_rename_popup();
-            }
-            Key::Char('o') => match app.open_selected_icon() {
-                Ok(crate::viewer::OpenSvgOutcome::OpenedWithCustomCommand) => self.clear_status(),
-                Ok(crate::viewer::OpenSvgOutcome::OpenedWithOsDefault) => self.clear_status(),
-                Ok(crate::viewer::OpenSvgOutcome::OpenedWithOsDefaultAfterCustomFailure) => self
-                    .set_status(
-                        "svg_viewer_cmd failed; opened icon via OS default viewer".to_string(),
-                        false,
-                    ),
-                Ok(crate::viewer::OpenSvgOutcome::OpenedWithWebPreview(url)) => self.set_status(
-                    format!("Local open failed; opened web preview: {url}"),
-                    false,
-                ),
-                Err(error) => self.set_status(format!("Failed to open icon: {}", error), true),
-            },
-            Key::Char('/') => {
-                self.main_state_focus = MainStateFocus::Search;
-            }
-            Key::Char('?') => {
-                app.init_help_popup();
-            }
-            Key::Up | Key::Char('k') => {
-                let item_count = if self.search_items_value.is_empty() {
-                    app.items.len()
-                } else {
-                    app.filtered_items.len()
-                };
-                if item_count == 0 {
-                    app.selected_index = 0;
-                } else if app.selected_index > 0 {
-                    app.selected_index -= 1;
-                } else {
-                    app.selected_index = item_count - 1;
-                }
-            }
-            Key::Down | Key::Char('j') => {
-                let item_count = if self.search_items_value.is_empty() {
-                    app.items.len()
-                } else {
-                    app.filtered_items.len()
-                };
-                if item_count == 0 {
-                    app.selected_index = 0;
-                } else if app.selected_index < item_count.saturating_sub(1) {
-                    app.selected_index += 1;
-                } else {
-                    app.selected_index = 0;
-                }
-            }
-            _ => {}
-        }
-    }
-    pub fn update_filtered_items(&mut self, app: &mut App) {
-        app.filtered_items = fuzzy_filter_home_items(&app.items, &self.search_items_value);
-        if app.filtered_items.is_empty() {
-            app.selected_index = 0;
-        } else if app.selected_index >= app.filtered_items.len() {
-            app.selected_index = app.filtered_items.len().saturating_sub(1);
-        }
-    }
 }
 
 impl App {
+    fn main_item_count(&self) -> usize {
+        if self.main_state.search_items_value.is_empty() {
+            self.items.len()
+        } else {
+            self.filtered_items.len()
+        }
+    }
+
+    fn move_main_selection_up(&mut self) {
+        let item_count = self.main_item_count();
+        if item_count == 0 {
+            self.selected_index = 0;
+        } else if self.selected_index > 0 {
+            self.selected_index -= 1;
+        } else {
+            self.selected_index = item_count - 1;
+        }
+    }
+
+    fn move_main_selection_down(&mut self) {
+        let item_count = self.main_item_count();
+        if item_count == 0 {
+            self.selected_index = 0;
+        } else if self.selected_index < item_count.saturating_sub(1) {
+            self.selected_index += 1;
+        } else {
+            self.selected_index = 0;
+        }
+    }
+
+    fn update_filtered_items_main(&mut self) {
+        self.filtered_items =
+            fuzzy_filter_home_items(&self.items, &self.main_state.search_items_value);
+        if self.filtered_items.is_empty() {
+            self.selected_index = 0;
+        } else if self.selected_index >= self.filtered_items.len() {
+            self.selected_index = self.filtered_items.len().saturating_sub(1);
+        }
+    }
+
+    fn handlekeys_main_search(&mut self, input: &Input) {
+        match input.key {
+            Key::Esc => {
+                self.main_state.main_state_focus = MainStateFocus::Normal;
+                self.app_focus = AppFocus::Main;
+                self.main_state.search_textarea = TextArea::default();
+                self.main_state.search_items_value.clear();
+                self.update_filtered_items_main();
+            }
+            Key::Enter => {
+                self.app_focus = AppFocus::Main;
+                self.main_state.main_state_focus = MainStateFocus::Normal;
+            }
+            Key::Up => self.move_main_selection_up(),
+            Key::Down => self.move_main_selection_down(),
+            _ => {
+                self.main_state.search_textarea.input(input.clone());
+                self.main_state.search_items_value =
+                    self.main_state.search_textarea.lines().join("");
+                self.update_filtered_items_main();
+            }
+        }
+    }
+
+    fn handlekeys_main_normal(&mut self, input: &Input) {
+        match input.key {
+            Key::Char('q') => self.should_quit = true,
+            Key::Char('a') => {
+                self.init_add_popup();
+            }
+            Key::Char('i') => {
+                self.init_iconify_search_popup();
+            }
+            Key::Char('d') => {
+                self.init_delete_popup();
+            }
+            Key::Char('r') => {
+                self.init_rename_popup();
+            }
+            Key::Char('o') => match self.open_selected_icon() {
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithCustomCommand) => {
+                    self.main_state.clear_status()
+                }
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithOsDefault) => {
+                    self.main_state.clear_status()
+                }
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithOsDefaultAfterCustomFailure) => {
+                    self.main_state.set_status(
+                        "svg_viewer_cmd failed; opened icon via OS default viewer".to_string(),
+                        false,
+                    )
+                }
+                Ok(crate::viewer::OpenSvgOutcome::OpenedWithWebPreview(url)) => {
+                    self.main_state.set_status(
+                        format!("Local open failed; opened web preview: {url}"),
+                        false,
+                    )
+                }
+                Err(error) => self
+                    .main_state
+                    .set_status(format!("Failed to open icon: {}", error), true),
+            },
+            Key::Char('/') => {
+                self.main_state.main_state_focus = MainStateFocus::Search;
+            }
+            Key::Char('?') => {
+                self.init_help_popup();
+            }
+            Key::Up | Key::Char('k') => self.move_main_selection_up(),
+            Key::Down | Key::Char('j') => self.move_main_selection_down(),
+            _ => {}
+        }
+    }
+
     pub fn open_selected_icon(&self) -> anyhow::Result<crate::viewer::OpenSvgOutcome> {
         use std::path::Path;
 
@@ -240,14 +230,9 @@ impl App {
     }
 
     pub fn handlekeys_main(&mut self, input: Input) {
-        let main_state_ptr = &mut self.main_state as *mut MainState; // Replace MainState with your actual type
         match self.main_state.main_state_focus {
-            MainStateFocus::Search => {
-                unsafe { (*main_state_ptr).handlekeys_search(&input, self) };
-            }
-            MainStateFocus::Normal => {
-                unsafe { (*main_state_ptr).handlekeys_normal(&input, self) };
-            }
+            MainStateFocus::Search => self.handlekeys_main_search(&input),
+            MainStateFocus::Normal => self.handlekeys_main_normal(&input),
         }
     }
 }

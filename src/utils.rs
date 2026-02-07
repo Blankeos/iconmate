@@ -404,7 +404,7 @@ pub fn filename_from_preset(file_name: Option<String>, preset: Option<Preset>) -
 
 /// Util: Reads a file line-by-line and extracts every icon entry that matches
 /// the template used by the current project.
-/// Returns a vector of `IconEntry` with the name and absolute file path.
+/// Returns a vector of `IconEntry` with the export alias and import file path.
 pub fn get_existing_icons(folder_path: &str) -> anyhow::Result<Vec<IconEntry>> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -420,13 +420,23 @@ pub fn get_existing_icons(folder_path: &str) -> anyhow::Result<Vec<IconEntry>> {
 
     for line in reader.lines() {
         let line = line?;
+
         // Skip empty lines and comments
         if line.trim().is_empty() || line.trim_start().starts_with("//") {
             continue;
         }
 
-        if let Some(icon_entry) = parse_export_line_ts(&line) {
-            icons.push(icon_entry);
+        // Parse one or more exports per physical line.
+        // This keeps discovery resilient if exports were accidentally concatenated.
+        for statement in line.split(';') {
+            let statement = statement.trim();
+            if statement.is_empty() || statement.starts_with("//") {
+                continue;
+            }
+
+            if let Some(icon_entry) = parse_export_line_ts(statement) {
+                icons.push(icon_entry);
+            }
         }
     }
 
@@ -435,8 +445,6 @@ pub fn get_existing_icons(folder_path: &str) -> anyhow::Result<Vec<IconEntry>> {
 
 /// For parsing a single export line in typescript.
 pub fn parse_export_line_ts(line: &str) -> Option<IconEntry> {
-    use std::path::Path;
-
     let line = line.trim();
 
     // Skip empty lines and comments
@@ -475,14 +483,21 @@ pub fn parse_export_line_ts(line: &str) -> Option<IconEntry> {
     let path_start = quote_char.len_utf8();
     let path_end = after_from[path_start..].find(quote_char)?;
     let relative_path = &after_from[path_start..path_start + path_end];
-
-    let abs_path = Path::new(relative_path)
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(relative_path).to_path_buf());
+    let mut import_path_end = relative_path.len();
+    if let Some(index) = relative_path.find('?') {
+        import_path_end = import_path_end.min(index);
+    }
+    if let Some(index) = relative_path.find('#') {
+        import_path_end = import_path_end.min(index);
+    }
+    let import_path = relative_path[..import_path_end].trim();
+    if import_path.is_empty() {
+        return None;
+    }
 
     Some(IconEntry {
         name: name.to_string(),
-        file_path: abs_path.to_string_lossy().to_string(),
+        file_path: import_path.to_string(),
     })
 }
 
@@ -541,7 +556,10 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
 
             if found_export {
                 // Write the updated content back
-                let updated_content = lines_to_keep.join("\n");
+                let mut updated_content = lines_to_keep.join("\n");
+                if contents.ends_with('\n') {
+                    updated_content.push('\n');
+                }
                 fs::write(&index_path, updated_content)?;
                 // println!("Updated index.ts");
             }
@@ -766,6 +784,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_typescript_export_and_strips_import_query() {
+        let parsed = parse_export_line_ts(
+            "export { default as IconGithub } from './mdi:github.svg?react#hash';",
+        )
+        .expect("export with query suffix should parse");
+
+        assert_eq!(parsed.name, "IconGithub");
+        assert_eq!(parsed.file_path, "./mdi:github.svg");
+    }
+
+    #[test]
     fn renames_file_and_updates_index_path() {
         let temp_dir = TempDir::new().expect("temp dir should be created");
         let icons_folder = temp_dir.path().join("icons");
@@ -835,5 +864,61 @@ mod tests {
             !index_contents.contains("Iconbar") && index_contents.contains("IconAliasStays"),
             "icon alias should stay unchanged"
         );
+    }
+
+    #[test]
+    fn get_existing_icons_reads_multiple_exports_on_same_line() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconGithub } from './mdi:github.svg';export { default as IconDarkTheme24Filled } from './fluent:dark-theme-24-filled.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        let icons = get_existing_icons(icons_folder.to_string_lossy().as_ref())
+            .expect("icons should be discovered");
+
+        assert_eq!(icons.len(), 2, "both exports should be discovered");
+        assert!(icons.iter().any(|icon| icon.name == "IconGithub"));
+        assert!(
+            icons
+                .iter()
+                .any(|icon| icon.name == "IconDarkTheme24Filled")
+        );
+    }
+
+    #[test]
+    fn delete_icon_entry_preserves_trailing_newline() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let keep_file = icons_folder.join("keep.svg");
+        let remove_file = icons_folder.join("remove.svg");
+        std::fs::write(&keep_file, "<svg></svg>").expect("keep icon should be created");
+        std::fs::write(&remove_file, "<svg></svg>").expect("remove icon should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconKeep } from './keep.svg';\nexport { default as IconRemove } from './remove.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        delete_icon_entry(remove_file.to_string_lossy().as_ref())
+            .expect("delete should remove icon entry");
+
+        let updated_index =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(
+            updated_index.ends_with('\n'),
+            "index.ts should retain trailing newline"
+        );
+        assert!(updated_index.contains("IconKeep"));
+        assert!(!updated_index.contains("IconRemove"));
     }
 }

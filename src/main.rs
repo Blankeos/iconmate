@@ -1,6 +1,5 @@
 mod app_state;
 mod config;
-mod form_input;
 mod iconify;
 mod tui;
 mod utils;
@@ -536,7 +535,15 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
     if index_ts_path.exists() {
         let mut contents = fs::read_to_string(&index_ts_path)?;
-        if !contents.contains(&export_line) {
+        let export_line_trimmed = export_line.trim_end();
+        let export_already_exists = contents
+            .lines()
+            .any(|line| line.trim_end() == export_line_trimmed);
+
+        if !export_already_exists {
+            if !contents.is_empty() && !contents.ends_with('\n') {
+                contents.push('\n');
+            }
             contents.push_str(&export_line);
             fs::write(&index_ts_path, contents)?;
             println!("Added export to: {}", index_ts_path.display());
@@ -677,6 +684,31 @@ impl std::fmt::Display for IconEntry {
     }
 }
 
+fn remove_selected_exports_from_index(contents: &str, selected_icons: &[IconEntry]) -> String {
+    use std::collections::HashSet;
+
+    let selected = selected_icons
+        .iter()
+        .map(|icon| (icon.name.clone(), icon.file_path.clone()))
+        .collect::<HashSet<_>>();
+
+    let kept_lines = contents
+        .lines()
+        .filter(|line| {
+            !crate::utils::parse_export_line_ts(line)
+                .map(|entry| selected.contains(&(entry.name, entry.file_path)))
+                .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
+
+    let mut updated = kept_lines.join("\n");
+    if contents.ends_with('\n') {
+        updated.push('\n');
+    }
+
+    updated
+}
+
 /// Interactive mode: deleting an icon from a select list of icons.
 async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
     use inquire::{Confirm, MultiSelect, Text, ui::RenderConfig};
@@ -744,8 +776,6 @@ async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
     }
 
     // Step 7: Delete the icons
-    let mut updated_index_content = contents.clone();
-
     for icon_to_delete in &selected_icons {
         let full_path = folder.join(&icon_to_delete.file_path);
 
@@ -759,37 +789,9 @@ async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
         } else {
             eprintln!("File not found: {}", full_path.display());
         }
-
-        // Remove the export line from index.ts content
-        if let Some(line_to_remove) = crate::utils::parse_export_line_ts(&contents) {
-            if line_to_remove.name == icon_to_delete.name
-                && line_to_remove.file_path == icon_to_delete.file_path
-            {
-                if let Some(line_start) = contents.find(&line_to_remove.name) {
-                    // Find the start of the line
-                    let mut start = line_start;
-                    while start > 0 && contents.chars().nth(start - 1) != Some('\n') {
-                        start -= 1;
-                    }
-
-                    // Find the end of the line
-                    let mut end = start;
-                    let chars: Vec<char> = contents.chars().collect();
-                    while end < chars.len() && chars[end] != '\n' {
-                        end += 1;
-                    }
-                    if end < chars.len() {
-                        end += 1; // Include the newline
-                    }
-
-                    // Remove the line
-                    let before = &updated_index_content[..start];
-                    let after = &updated_index_content[end..];
-                    updated_index_content = format!("{}{}", before, after);
-                }
-            }
-        }
     }
+
+    let updated_index_content = remove_selected_exports_from_index(&contents, &selected_icons);
 
     // Write the updated index.ts
     fs::write(&index_ts_path, updated_index_content)?;
@@ -848,5 +850,30 @@ async fn main() -> anyhow::Result<()> {
             };
             tui::run(config).await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remove_selected_exports_removes_each_selected_line() {
+        let contents = "export { default as IconOne } from './one.svg';\nexport { default as IconTwo } from './two.svg?react';\nexport { default as IconThree } from './three.svg';\n";
+
+        let selected_icons = vec![
+            crate::utils::parse_export_line_ts("export { default as IconOne } from './one.svg';")
+                .expect("line should parse"),
+            crate::utils::parse_export_line_ts(
+                "export { default as IconTwo } from './two.svg?react';",
+            )
+            .expect("line should parse"),
+        ];
+
+        let updated = remove_selected_exports_from_index(contents, &selected_icons);
+
+        assert!(!updated.contains("IconOne"));
+        assert!(!updated.contains("IconTwo"));
+        assert!(updated.contains("IconThree"));
     }
 }

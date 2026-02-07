@@ -1,12 +1,12 @@
 use std::process::Command;
 
 use crate::app_state::{App, AppFocus};
-use crate::utils::{popup_area, Preset, PresetOption, PRESETS_OPTIONS};
+use crate::utils::{PRESETS_OPTIONS, Preset, PresetOption, popup_area};
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, ListItem, Paragraph};
-use ratatui::Frame;
 use tui_textarea::{Input, Key, TextArea};
 
 // Constants
@@ -494,8 +494,10 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         };
         if items.is_empty() {
             state_store.select(None);
-            items = vec![ListItem::new("No presets found")
-                .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))];
+            items = vec![
+                ListItem::new("No presets found")
+                    .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT)),
+            ];
         } else {
             state_store.select(Some(state.preset_index))
         };
