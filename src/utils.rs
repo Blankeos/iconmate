@@ -511,13 +511,10 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
 
     let path = Path::new(file_path);
 
-    // Delete the icon file
+    // Delete the icon file when present. We still continue to clean index.ts
+    // if the file is already missing (stale export entry).
     if path.exists() {
         fs::remove_file(path)?;
-        // eprintln!("Deleted icon file: {}", path.display());
-    } else {
-        // eprintln!("Icon file not found: {}", path.display());
-        return Ok(());
     }
 
     // Find the parent folder and index.ts
@@ -529,25 +526,26 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
             let contents = fs::read_to_string(&index_path)?;
 
             // Generate the file path relative to the parent folder
-            let relative_path = if file_path.starts_with(parent.to_string_lossy().as_ref()) {
-                &file_path[parent.to_string_lossy().len() + 1..]
-            } else {
-                file_path
-            };
+            let relative_path = path
+                .strip_prefix(parent)
+                .ok()
+                .and_then(|value| value.to_str())
+                .unwrap_or(file_path);
 
             // Create the normalized relative path for comparison
-            let normalized_relative_path = relative_path.replace('\\', "/");
-            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-
+            let normalized_relative_path = normalize_icon_relative_path(relative_path);
             // Remove all lines that export this file
             let mut lines_to_keep = Vec::new();
             let mut found_export = false;
 
             for line in contents.lines() {
-                // Check if this line exports our file
-                if line.contains(&normalized_relative_path)
-                    || (line.contains(file_name) && line.contains("export"))
-                {
+                let should_remove = parse_export_line_ts(line)
+                    .map(|entry| {
+                        normalize_icon_relative_path(&entry.file_path) == normalized_relative_path
+                    })
+                    .unwrap_or(false);
+
+                if should_remove {
                     found_export = true;
                     continue; // Skip this line (remove it)
                 }
@@ -577,6 +575,22 @@ fn normalize_icon_relative_path(value: &str) -> String {
         .replace('\\', "/")
         .trim_start_matches("./")
         .to_string()
+}
+
+fn split_import_path_suffix(value: &str) -> (&str, &str) {
+    let query_index = value.find('?');
+    let hash_index = value.find('#');
+
+    let split_index = match (query_index, hash_index) {
+        (Some(query), Some(hash)) => Some(query.min(hash)),
+        (Some(index), None) | (None, Some(index)) => Some(index),
+        (None, None) => None,
+    };
+
+    match split_index {
+        Some(index) => (&value[..index], &value[index..]),
+        None => (value, ""),
+    }
 }
 
 pub fn rename_icon_entry(
@@ -651,18 +665,21 @@ pub fn rename_icon_entry(
                 if let Some(second_quote_offset) = line[path_start_idx..].find(quote_char) {
                     let path_end_idx = path_start_idx + second_quote_offset;
                     let matched_path = &line[path_start_idx..path_end_idx];
+                    let (matched_base_path, matched_suffix) =
+                        split_import_path_suffix(matched_path);
 
-                    if normalize_icon_relative_path(matched_path) == current_relative_path {
-                        let with_dot_prefix = matched_path.starts_with("./");
+                    if normalize_icon_relative_path(matched_base_path) == current_relative_path {
+                        let with_dot_prefix = matched_base_path.starts_with("./");
                         let replacement_path = if with_dot_prefix {
                             format!("./{}", new_relative_path)
                         } else {
                             new_relative_path.clone()
                         };
                         let updated_line = format!(
-                            "{}{}{}{}",
+                            "{}{}{}{}{}",
                             &line[..path_start_idx],
                             replacement_path,
+                            matched_suffix,
                             quote_char,
                             &line[path_end_idx + 1..]
                         );
@@ -867,6 +884,38 @@ mod tests {
     }
 
     #[test]
+    fn renames_file_and_preserves_import_suffix() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let old_file = icons_folder.join("foo.svg");
+        std::fs::write(&old_file, "<svg></svg>").expect("old file should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconAliasStays } from './foo.svg?react#hash';\n",
+        )
+        .expect("index.ts should be created");
+
+        rename_icon_entry(
+            icons_folder.to_string_lossy().as_ref(),
+            "./foo.svg",
+            "bar.svg",
+        )
+        .expect("rename should succeed");
+
+        let index_contents =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(
+            index_contents
+                .contains("export { default as IconAliasStays } from './bar.svg?react#hash';"),
+            "index.ts should preserve import suffixes"
+        );
+    }
+
+    #[test]
     fn get_existing_icons_reads_multiple_exports_on_same_line() {
         let temp_dir = TempDir::new().expect("temp dir should be created");
         let icons_folder = temp_dir.path().join("icons");
@@ -920,5 +969,81 @@ mod tests {
         );
         assert!(updated_index.contains("IconKeep"));
         assert!(!updated_index.contains("IconRemove"));
+    }
+
+    #[test]
+    fn delete_icon_entry_removes_only_exact_export_path() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let remove_file = icons_folder.join("remove.svg");
+        let keep_file = icons_folder.join("remove-filled.svg");
+        std::fs::write(&remove_file, "<svg></svg>").expect("remove icon should be created");
+        std::fs::write(&keep_file, "<svg></svg>").expect("keep icon should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconRemove } from './remove.svg';\nexport { default as IconRemoveFilled } from './remove-filled.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        delete_icon_entry(remove_file.to_string_lossy().as_ref())
+            .expect("delete should remove only the exact icon entry");
+
+        let updated_index =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(updated_index.contains("IconRemoveFilled"));
+        assert!(!updated_index.contains("IconRemove }"));
+    }
+
+    #[test]
+    fn delete_icon_entry_handles_absolute_dot_segment_path() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let remove_file = icons_folder.join("remove.svg");
+        std::fs::write(&remove_file, "<svg></svg>").expect("remove icon should be created");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconRemove } from './remove.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        let absolute_with_dot = icons_folder.join("./remove.svg");
+        delete_icon_entry(absolute_with_dot.to_string_lossy().as_ref())
+            .expect("delete should accept absolute paths with dot segments");
+
+        let updated_index =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(!updated_index.contains("IconRemove"));
+    }
+
+    #[test]
+    fn delete_icon_entry_updates_index_even_if_file_is_missing() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let missing_file = icons_folder.join("fluent:dark-theme-24-regular.svg");
+
+        let index_path = icons_folder.join("index.ts");
+        std::fs::write(
+            &index_path,
+            "export { default as IconDarkTheme24Regular } from './fluent:dark-theme-24-regular.svg';\nexport { default as IconKeep } from './keep.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        delete_icon_entry(missing_file.to_string_lossy().as_ref())
+            .expect("delete should remove stale export when file is missing");
+
+        let updated_index =
+            std::fs::read_to_string(&index_path).expect("index.ts should be readable");
+        assert!(!updated_index.contains("IconDarkTheme24Regular"));
+        assert!(updated_index.contains("IconKeep"));
     }
 }

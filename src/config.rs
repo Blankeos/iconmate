@@ -214,6 +214,7 @@ fn parse_local_value(
     warn_unknown_keys(
         &object,
         &[
+            "$schema",
             "folder",
             "preset",
             "output_line_template",
@@ -268,7 +269,12 @@ fn parse_global_value(
     warnings: &mut Vec<String>,
 ) -> anyhow::Result<GlobalConfigFile> {
     let object = as_object(value, path)?;
-    warn_unknown_keys(&object, &["svg_view_cmd", "svg_viewer_cmd"], path, warnings);
+    warn_unknown_keys(
+        &object,
+        &["$schema", "svg_view_cmd", "svg_viewer_cmd"],
+        path,
+        warnings,
+    );
 
     let svg_viewer_cmd = read_svg_viewer_cmd(&object, path, warnings)?;
     Ok(GlobalConfigFile { svg_viewer_cmd })
@@ -379,6 +385,38 @@ mod tests {
         let _ = parse_global_value(value, Path::new("/tmp/iconmate.jsonc"), &mut warnings).unwrap();
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("Ignoring unknown key 'extra'"));
+    }
+
+    #[test]
+    fn allows_schema_key_without_warning() {
+        let value: Value = serde_json::json!({
+            "$schema": "https://example.com/iconmate.schema.json",
+            "svg_view_cmd": "open %filename%"
+        });
+        let mut warnings = Vec::new();
+        let parsed =
+            parse_global_value(value, Path::new("/tmp/iconmate.jsonc"), &mut warnings).unwrap();
+
+        assert_eq!(parsed.svg_viewer_cmd, Some("open %filename%".to_string()));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn allows_schema_key_in_local_config_without_warning() {
+        let value: Value = serde_json::json!({
+            "$schema": "https://example.com/iconmate-local.schema.json",
+            "preset": "normal"
+        });
+        let mut warnings = Vec::new();
+        let parsed = parse_local_value(
+            value,
+            Path::new("/tmp/iconmate.config.jsonc"),
+            &mut warnings,
+        )
+        .expect("local config with $schema should parse");
+
+        assert_eq!(parsed.preset.as_deref(), Some("normal"));
+        assert!(warnings.is_empty());
     }
 
     #[test]

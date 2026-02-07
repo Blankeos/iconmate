@@ -710,13 +710,23 @@ fn remove_selected_exports_from_index(contents: &str, selected_icons: &[IconEntr
 }
 
 /// Interactive mode: deleting an icon from a select list of icons.
-async fn run_delete_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
+fn resolve_delete_folder<'a>(
+    cli: &'a CliArgs,
+    command_folder: Option<&'a PathBuf>,
+) -> Option<&'a PathBuf> {
+    command_folder.or(cli.folder.as_ref())
+}
+
+async fn run_delete_prompt_mode(
+    cli: &CliArgs,
+    command_folder: Option<&PathBuf>,
+) -> anyhow::Result<()> {
     use inquire::{Confirm, MultiSelect, Text, ui::RenderConfig};
 
     let render_config = RenderConfig::default().with_prompt_prefix(inquire::ui::Styled::new("●"));
 
     // Step 1: Get the folder path
-    let folder_raw = match &cli.folder {
+    let folder_raw = match resolve_delete_folder(cli, command_folder) {
         Some(f) => {
             println!(">   Folder: {}", f.display());
             f.display().to_string()
@@ -823,7 +833,9 @@ async fn main() -> anyhow::Result<()> {
             run_app(config).await
         }
         Some(Commands::Tui {}) => run_prompt_mode(&args).await,
-        Some(Commands::Delete { folder: _ }) => run_delete_prompt_mode(&args).await,
+        Some(Commands::Delete { ref folder }) => {
+            run_delete_prompt_mode(&args, folder.as_ref()).await
+        }
         Some(Commands::Iconify { command }) => run_iconify_command(command).await,
         None => {
             let resolved = config::resolve_tui_config(
@@ -875,5 +887,40 @@ mod tests {
         assert!(!updated.contains("IconOne"));
         assert!(!updated.contains("IconTwo"));
         assert!(updated.contains("IconThree"));
+    }
+
+    #[test]
+    fn resolve_delete_folder_prefers_subcommand_folder() {
+        let cli_folder = PathBuf::from("src/assets/icons");
+        let command_folder = PathBuf::from("icons/from/delete");
+        let cli = CliArgs {
+            command: None,
+            folder: Some(cli_folder),
+            preset: None,
+            name: None,
+            icon: None,
+            filename: None,
+            output_line_template: None,
+        };
+
+        let resolved = resolve_delete_folder(&cli, Some(&command_folder));
+        assert_eq!(resolved, Some(&command_folder));
+    }
+
+    #[test]
+    fn resolve_delete_folder_falls_back_to_global_folder() {
+        let cli_folder = PathBuf::from("src/assets/icons");
+        let cli = CliArgs {
+            command: None,
+            folder: Some(cli_folder.clone()),
+            preset: None,
+            name: None,
+            icon: None,
+            filename: None,
+            output_line_template: None,
+        };
+
+        let resolved = resolve_delete_folder(&cli, None);
+        assert_eq!(resolved, Some(&cli_folder));
     }
 }
