@@ -129,13 +129,14 @@ impl App {
 pub fn render_rename_popup(f: &mut Frame, app: &mut App) {
     use ratatui::style::Modifier;
 
-    let area = popup_area(f.area(), 74, 15);
+    let area = popup_area(f.area(), 74, 16);
     let body_area = crate::views::theme::render_popup_shell(f, area, "Rename File");
 
     let layout = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
         .constraints([
             Constraint::Length(2),
+            Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Length(1),
             Constraint::Length(2),
@@ -164,15 +165,15 @@ pub fn render_rename_popup(f: &mut Frame, app: &mut App) {
             .style(Style::default().fg(crate::views::theme::TEXT));
         state.filename_input.set_block(input_block);
         state.filename_input.set_cursor_line_style(Style::default());
-        f.render_widget(&state.filename_input, layout[1]);
+        f.render_widget(&state.filename_input, layout[2]);
 
         let tip = Paragraph::new(
-            "Renames only the file path export target.\nFor alias rename, use your IDE Rename Symbol.",
+            "Renames only the file path export target.\nFor alias rename, use your IDE's rename feature via LSP.",
         )
         .alignment(Alignment::Left)
         .wrap(Wrap { trim: true })
         .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT));
-        f.render_widget(tip, layout[3]);
+        f.render_widget(tip, layout[4]);
 
         let footer = if let Some(message) = &state.status_message {
             let color = if state.status_is_error {
@@ -191,6 +192,6 @@ pub fn render_rename_popup(f: &mut Frame, app: &mut App) {
             ]))
             .alignment(Alignment::Left)
         };
-        f.render_widget(footer, layout[4]);
+        f.render_widget(footer, layout[5]);
     }
 }
