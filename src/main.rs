@@ -95,6 +95,14 @@ enum Commands {
         folder: Option<PathBuf>,
     },
 
+    /// List all icons currently exported in the icons folder.
+    #[command(visible_alias = "ls")]
+    List {
+        /// Pathname of the folder where all the icons are saved.
+        #[arg(long)]
+        folder: Option<PathBuf>,
+    },
+
     /// Query Iconify collections, search results, and raw SVGs.
     Iconify {
         #[command(subcommand)]
@@ -529,11 +537,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
     if index_ts_path.exists() {
         let existing_index = fs::read_to_string(&index_ts_path)?;
-        validate_new_export_conflicts(
-            &existing_index,
-            &rendered_export_statement,
-            &index_ts_path,
-        )?;
+        validate_new_export_conflicts(&existing_index, &rendered_export_statement, &index_ts_path)?;
     }
 
     if svg_file_path.exists() {
@@ -801,6 +805,37 @@ fn remove_selected_exports_from_index(contents: &str, selected_icons: &[IconEntr
     updated
 }
 
+fn resolve_list_folder<'a>(
+    cli: &'a CliArgs,
+    command_folder: Option<&'a PathBuf>,
+) -> Option<&'a PathBuf> {
+    command_folder.or(cli.folder.as_ref())
+}
+
+fn run_list_mode(cli: &CliArgs, command_folder: Option<&PathBuf>) -> anyhow::Result<()> {
+    let folder = resolve_list_folder(cli, command_folder)
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from(config::DEFAULT_FOLDER));
+    let index_ts_path = folder.join("index.ts");
+
+    if !index_ts_path.exists() {
+        println!("No icons found in {}", index_ts_path.display());
+        return Ok(());
+    }
+
+    let icons = crate::utils::get_existing_icons(folder.to_string_lossy().as_ref())?;
+    if icons.is_empty() {
+        println!("No icons found in {}", index_ts_path.display());
+        return Ok(());
+    }
+
+    for icon in icons {
+        println!("{}\t{}", icon.name, icon.file_path);
+    }
+
+    Ok(())
+}
+
 /// Interactive mode: deleting an icon from a select list of icons.
 fn resolve_delete_folder<'a>(
     cli: &'a CliArgs,
@@ -922,6 +957,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Delete { ref folder }) => {
             run_delete_prompt_mode(&args, folder.as_ref()).await
         }
+        Some(Commands::List { ref folder }) => run_list_mode(&args, folder.as_ref()),
         Some(Commands::Iconify { command }) => run_iconify_command(command).await,
         None => {
             let resolved = config::resolve_tui_config(
@@ -1037,6 +1073,41 @@ mod tests {
     }
 
     #[test]
+    fn resolve_list_folder_prefers_subcommand_folder() {
+        let cli_folder = PathBuf::from("src/assets/icons");
+        let command_folder = PathBuf::from("icons/from/list");
+        let cli = CliArgs {
+            command: None,
+            folder: Some(cli_folder),
+            preset: None,
+            name: None,
+            icon: None,
+            filename: None,
+            output_line_template: None,
+        };
+
+        let resolved = resolve_list_folder(&cli, Some(&command_folder));
+        assert_eq!(resolved, Some(&command_folder));
+    }
+
+    #[test]
+    fn resolve_list_folder_falls_back_to_global_folder() {
+        let cli_folder = PathBuf::from("src/assets/icons");
+        let cli = CliArgs {
+            command: None,
+            folder: Some(cli_folder.clone()),
+            preset: None,
+            name: None,
+            icon: None,
+            filename: None,
+            output_line_template: None,
+        };
+
+        let resolved = resolve_list_folder(&cli, None);
+        assert_eq!(resolved, Some(&cli_folder));
+    }
+
+    #[test]
     fn validate_new_export_conflicts_rejects_duplicate_alias() {
         let existing = "export { default as IconHeart } from './heart.svg';\n";
         let error = validate_new_export_conflicts(
@@ -1046,7 +1117,11 @@ mod tests {
         )
         .expect_err("duplicate alias should fail");
 
-        assert!(error.to_string().contains("Icon alias 'IconHeart' already exists"));
+        assert!(
+            error
+                .to_string()
+                .contains("Icon alias 'IconHeart' already exists")
+        );
     }
 
     #[test]
@@ -1059,9 +1134,11 @@ mod tests {
         )
         .expect_err("duplicate target should fail");
 
-        assert!(error
-            .to_string()
-            .contains("Export target './heart.svg' already exists"));
+        assert!(
+            error
+                .to_string()
+                .contains("Export target './heart.svg' already exists")
+        );
     }
 
     #[test]

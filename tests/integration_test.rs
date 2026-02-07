@@ -467,3 +467,99 @@ fn test_add_command_preset_normal_requires_icon() {
         "stderr should explain normal preset needs an icon"
     );
 }
+
+#[test]
+fn test_list_command_prints_existing_icons() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+    std::fs::create_dir_all(&test_folder).expect("Failed to create icons folder");
+
+    let index_file = test_folder.join("index.ts");
+    std::fs::write(
+        &index_file,
+        "export { default as IconHeart } from './heart.svg';\nexport { default as IconStar } from './star.svg';\n",
+    )
+    .expect("Failed to write index.ts");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+    let output = Command::new(binary_path)
+        .args(["list", "--folder", test_folder.to_str().unwrap()])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Command failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("IconHeart\t./heart.svg"),
+        "stdout should include IconHeart row"
+    );
+    assert!(
+        stdout.contains("IconStar\t./star.svg"),
+        "stdout should include IconStar row"
+    );
+}
+
+#[test]
+fn test_list_command_uses_default_folder_when_no_flag_is_passed() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let default_folder = temp_dir.path().join("src/assets/icons");
+    std::fs::create_dir_all(&default_folder).expect("Failed to create icons folder");
+
+    let index_file = default_folder.join("index.ts");
+    std::fs::write(
+        &index_file,
+        "export { default as IconHouse } from './house.svg';\n",
+    )
+    .expect("Failed to write index.ts");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+    let output = Command::new(binary_path)
+        .args(["list"])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Command failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("IconHouse\t./house.svg"),
+        "stdout should include icon from default folder"
+    );
+}
+
+#[test]
+fn test_list_command_reports_no_icons_when_index_is_missing() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let test_folder = temp_dir.path().join("src/assets/icons");
+    std::fs::create_dir_all(&test_folder).expect("Failed to create icons folder");
+
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+    let output = Command::new(binary_path)
+        .args(["list", "--folder", test_folder.to_str().unwrap()])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Command failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No icons found in"),
+        "stdout should explain that no icons were found"
+    );
+}
