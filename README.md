@@ -141,28 +141,12 @@ Example global config:
 
 ## Installation
 
-### NPM 🦖
-
-```bash
-# Install globally with either:
-npm install -g iconmate
-pnpm add -g iconmate
-bun add -g iconmate
-# Use without installing with either:
-npx iconmate
-pnpm dlx iconmate
-bunx iconmate
-```
-
-### Install from Cargo 🦀
-
-```bash
-cargo install iconmate
-
-# Or clone and install from source:
-git clone https://github.com/blankeos/iconmate.git
-cd iconmate
-cargo install --path .
+```sh
+npm install -g iconmate  # npm (or use npx)
+bun install -g iconmate  # or bun (or use bunx)
+cargo binstall iconmate  # or cargo-binstall (prebuilt binary, faster)
+cargo install iconmate   # or cargo (build from source)
+curl -sSL https://raw.githubusercontent.com/Blankeos/iconmate/main/install.sh | sh # or linux/macos (via curl)
 ```
 
 ## Framework Presets
