@@ -53,9 +53,9 @@ fi
 
 # Commit
 echo "🦋 Committing version bump ${NEW}..."
-sleep 2 # wait a 2 secs because Cargo.lock will get updated
+sleep 3 # wait a 3 secs because Cargo.lock will get updated
 git add .
-sleep 2 # wait a 2 secs because Cargo.lock will get updated
+sleep 3 # wait a 3 secs because Cargo.lock will get updated
 git commit -m "release: ${NAME} v${NEW}"
 
 # ============================================
