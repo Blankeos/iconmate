@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Blankeos/iconmate/main/_docs/iconmate_logo.png" alt="iconmate logo" width="180" />
+  <img src="./_docs/iconmate_logo.png" alt="iconmate logo" width="180" />
 </p>
 
 <h1 align="center">iconmate</h1>
@@ -7,7 +7,7 @@
 <p align="center"><strong>Add SVG icons to your JS apps without icon libraries.</strong></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Blankeos/iconmate/main/_docs/iconmate_banner.jpg" alt="iconmate banner" width="100%" />
+  <img src="./_docs/iconmate_banner.jpg" alt="iconmate banner" width="100%" />
 </p>
 
 <p align="center">
@@ -285,6 +285,14 @@ iconmate add --folder src/assets/icons --icon "$(curl -fsSL https://api.iconify.
 ```
 
 This means an AI can search, choose, and add icons without opening a browser.
+
+#### Agent Skill
+
+For the best AI experience, install the [iconmate skill](https://github.com/Blankeos/iconmate/tree/main/skills/iconmate) so your agent knows all the commands automatically:
+
+```bash
+npx skills add Blankeos/iconmate
+```
 
 ### Package.json Scripts
 

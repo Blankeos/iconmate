@@ -286,7 +286,7 @@ iconmate add --folder src/assets/icons --icon "$(curl -fsSL https://api.iconify.
 
 This means an AI can search, choose, and add icons without opening a browser.
 
-#### Claude Code Skill
+#### Agent Skill
 
 For the best AI experience, install the [iconmate skill](https://github.com/Blankeos/iconmate/tree/main/skills/iconmate) so your agent knows all the commands automatically:
 
