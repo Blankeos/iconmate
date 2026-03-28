@@ -169,7 +169,12 @@ fn load_global_config(
 ) -> anyhow::Result<Option<LoadedConfigFile<GlobalConfigFile>>> {
     let mut candidates = Vec::<PathBuf>::new();
 
-    if let Some(config_dir) = dirs::config_dir() {
+    // Use $XDG_CONFIG_HOME if set, otherwise ~/.config — consistent across all platforms.
+    let config_dir = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".config")));
+
+    if let Some(config_dir) = config_dir {
         candidates.push(config_dir.join("iconmate.jsonc"));
         candidates.push(config_dir.join("iconmate.json"));
         candidates.push(config_dir.join("iconmate").join("config.jsonc"));
