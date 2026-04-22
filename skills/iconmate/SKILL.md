@@ -78,6 +78,19 @@ Confirm the icon appears in the list and the `index.ts` export file is updated.
 
 ### Delete an icon
 
+`iconmate delete` has two modes:
+
+**Non-interactive (use this as an agent):** pass `--name` and/or `--filename` (repeatable) plus `-y` to confirm. `--name` matches the export identifier exactly as it appears in `index.ts` (e.g. `IconHeart`, including any prefix from the template). `--filename` matches the import path (e.g. `./heart.svg`). Run `iconmate list --folder <folder>` first to see the exact names and paths.
+
+```bash
+iconmate delete --folder <folder> --name IconHeart --name IconStar -y
+iconmate delete --folder <folder> --filename ./heart.svg -y
+```
+
+Without `-y` the command refuses to proceed. Unknown names/filenames and ambiguous matches are hard errors (no partial deletes).
+
+**Interactive (TUI picker):** with no `--name`/`--filename`, it opens a MultiSelect for the user. Do **not** run this form yourself — tell the user to run it:
+
 ```bash
 iconmate delete --folder <folder>
 ```

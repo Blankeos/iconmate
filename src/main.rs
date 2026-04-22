@@ -93,6 +93,20 @@ enum Commands {
         /// Pathname of the folder where all the icons are saved.
         #[arg(long)]
         folder: Option<PathBuf>,
+
+        /// Delete by export alias (e.g. "Chevron" matching `export { default as IconChevron }`).
+        /// Can be passed multiple times. When provided, runs non-interactively.
+        #[arg(long = "name")]
+        names: Vec<String>,
+
+        /// Delete by file path as it appears in index.ts (e.g. "./stash-chevron.svg").
+        /// Can be passed multiple times. When provided, runs non-interactively.
+        #[arg(long = "filename")]
+        filenames: Vec<String>,
+
+        /// Skip the confirmation prompt. Required for non-interactive deletes.
+        #[arg(long, short = 'y')]
+        yes: bool,
     },
 
     /// List all icons currently exported in the icons folder.
@@ -844,6 +858,97 @@ fn resolve_delete_folder<'a>(
     command_folder.or(cli.folder.as_ref())
 }
 
+fn apply_deletions(folder: &Path, index_ts_path: &Path, to_delete: &[IconEntry]) -> anyhow::Result<()> {
+    for icon in to_delete {
+        let full_path = folder.join(&icon.file_path);
+        if full_path.exists() {
+            if let Err(e) = fs::remove_file(&full_path) {
+                eprintln!("Failed to delete {}: {}", full_path.display(), e);
+            } else {
+                eprintln!("Deleted: {}", full_path.display());
+            }
+        } else {
+            eprintln!("File not found: {}", full_path.display());
+        }
+    }
+
+    let contents = fs::read_to_string(index_ts_path)?;
+    let updated = remove_selected_exports_from_index(&contents, to_delete);
+    fs::write(index_ts_path, updated)?;
+    Ok(())
+}
+
+fn run_delete_non_interactive(
+    cli: &CliArgs,
+    command_folder: Option<&PathBuf>,
+    names: &[String],
+    filenames: &[String],
+    yes: bool,
+) -> anyhow::Result<()> {
+    if !yes {
+        anyhow::bail!(
+            "Non-interactive delete requires --yes (-y) to confirm. Refusing to delete without explicit confirmation."
+        );
+    }
+
+    let folder = resolve_delete_folder(cli, command_folder)
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from(config::DEFAULT_FOLDER));
+
+    let index_ts_path = folder.join("index.ts");
+    if !index_ts_path.exists() {
+        anyhow::bail!(
+            "No index.ts found in {}. Are you sure this is an icons folder?",
+            folder.display()
+        );
+    }
+
+    let contents = fs::read_to_string(&index_ts_path)?;
+    let icons = collect_icons_from_index_contents(&contents);
+
+    if icons.is_empty() {
+        println!("No icons found in index.ts");
+        return Ok(());
+    }
+
+    let mut to_delete: Vec<IconEntry> = Vec::new();
+    let mut missing: Vec<String> = Vec::new();
+
+    for name in names {
+        let matches: Vec<&IconEntry> = icons.iter().filter(|i| &i.name == name).collect();
+        match matches.len() {
+            0 => missing.push(format!("name={name}")),
+            1 => to_delete.push(matches[0].clone()),
+            _ => anyhow::bail!(
+                "Ambiguous --name '{name}': {} exports match. Use --filename to disambiguate.",
+                matches.len()
+            ),
+        }
+    }
+
+    for filename in filenames {
+        let matches: Vec<&IconEntry> = icons.iter().filter(|i| &i.file_path == filename).collect();
+        match matches.len() {
+            0 => missing.push(format!("filename={filename}")),
+            1 => to_delete.push(matches[0].clone()),
+            _ => anyhow::bail!(
+                "Ambiguous --filename '{filename}': {} exports match.",
+                matches.len()
+            ),
+        }
+    }
+
+    if !missing.is_empty() {
+        anyhow::bail!("No matching icon(s) found for: {}", missing.join(", "));
+    }
+
+    // Deduplicate (a name and filename arg can resolve to the same entry).
+    to_delete.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    to_delete.dedup_by(|a, b| a.name == b.name && a.file_path == b.file_path);
+
+    apply_deletions(&folder, &index_ts_path, &to_delete)
+}
+
 async fn run_delete_prompt_mode(
     cli: &CliArgs,
     command_folder: Option<&PathBuf>,
@@ -954,8 +1059,17 @@ async fn main() -> anyhow::Result<()> {
             run_app(config).await
         }
         Some(Commands::Tui {}) => run_prompt_mode(&args).await,
-        Some(Commands::Delete { ref folder }) => {
-            run_delete_prompt_mode(&args, folder.as_ref()).await
+        Some(Commands::Delete {
+            ref folder,
+            ref names,
+            ref filenames,
+            yes,
+        }) => {
+            if !names.is_empty() || !filenames.is_empty() {
+                run_delete_non_interactive(&args, folder.as_ref(), names, filenames, yes)
+            } else {
+                run_delete_prompt_mode(&args, folder.as_ref()).await
+            }
         }
         Some(Commands::List { ref folder }) => run_list_mode(&args, folder.as_ref()),
         Some(Commands::Iconify { command }) => run_iconify_command(command).await,

@@ -66,3 +66,7 @@
 
 - Keep TUI minimal-first: less chrome, more keyboard speed.
 - Prefer defaults inferred from icon source whenever possible.
+
+---
+
+- [x] Non-interactive delete mode
