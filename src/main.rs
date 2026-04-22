@@ -1,6 +1,7 @@
 mod app_state;
 mod config;
 mod iconify;
+mod scroll;
 mod tui;
 mod utils;
 mod viewer;

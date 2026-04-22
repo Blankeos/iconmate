@@ -7,6 +7,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use ratatui::crossterm::event::Event;
 use ratatui::{Frame, Terminal, backend::CrosstermBackend, layout::Constraint};
 use std::{io, time::Duration};
 use tui_textarea::{Input, Key};
@@ -36,13 +37,24 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
         terminal.draw(|f| ui(f, &mut app))?;
 
         if ratatui::crossterm::event::poll(Duration::from_millis(16))? {
-            match ratatui::crossterm::event::read()?.into() {
-                Input {
-                    key: Key::Char('c'),
-                    ctrl: true,
-                    ..
-                } => break,
-                input => app.handlekeys(input),
+            let event = ratatui::crossterm::event::read()?;
+            match event {
+                Event::Key(_) => {
+                    let input: Input = event.into();
+                    if matches!(
+                        input,
+                        Input {
+                            key: Key::Char('c'),
+                            ctrl: true,
+                            ..
+                        }
+                    ) {
+                        break;
+                    }
+                    app.handlekeys(input);
+                }
+                Event::Mouse(mouse_event) => app.handle_mouse(mouse_event),
+                _ => {}
             }
         }
 

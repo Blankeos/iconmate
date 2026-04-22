@@ -10,7 +10,7 @@ use nucleo_matcher::{
 
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint},
+    layout::{Alignment, Constraint, Rect},
     style::Style,
     widgets::{Block, List, ListItem, Paragraph},
 };
@@ -19,6 +19,7 @@ use tui_textarea::{Input, Key, TextArea};
 use crate::{
     app_state::{App, AppEvent, AppFocus, IconifyCollectionListItem, IconifySearchPayload},
     iconify::IconifyClient,
+    scroll,
     utils::popup_area,
 };
 
@@ -106,6 +107,11 @@ pub struct IconifySearchPopupState {
     pub selected_collection_index: usize,
     pub selected_icon_index: usize,
 
+    pub collections_scroll_offset: usize,
+    pub icons_scroll_offset: usize,
+    pub collections_list_area: Option<Rect>,
+    pub icons_list_area: Option<Rect>,
+
     pub all_collections: Vec<IconifyCollectionListItem>,
     pub filtered_collections: Vec<IconifyCollectionListItem>,
     pub search_icons: Vec<String>,
@@ -137,6 +143,10 @@ impl IconifySearchPopupState {
             active_tab: IconifySearchTab::Collections,
             selected_collection_index: 0,
             selected_icon_index: 0,
+            collections_scroll_offset: 0,
+            icons_scroll_offset: 0,
+            collections_list_area: None,
+            icons_list_area: None,
             all_collections: Vec::new(),
             filtered_collections: Vec::new(),
             search_icons: Vec::new(),
@@ -289,22 +299,48 @@ impl IconifySearchPopupState {
         let len = self.active_collections().len();
         if len == 0 {
             self.selected_collection_index = 0;
+            self.collections_scroll_offset = 0;
             return;
         }
 
-        let next = (self.selected_collection_index as i32 + delta).rem_euclid(len as i32) as usize;
+        let current = self.selected_collection_index as i32;
+        let max_idx = len.saturating_sub(1) as i32;
+        let next = (current + delta).clamp(0, max_idx) as usize;
         self.selected_collection_index = next;
+
+        let height = self
+            .collections_list_area
+            .map(|area| area.height as usize)
+            .unwrap_or(0);
+        scroll::ensure_visible(
+            self.selected_collection_index,
+            &mut self.collections_scroll_offset,
+            height,
+        );
     }
 
     fn move_icon_selection(&mut self, delta: i32) {
         let len = self.visible_icons.len();
         if len == 0 {
             self.selected_icon_index = 0;
+            self.icons_scroll_offset = 0;
             return;
         }
 
-        let next = (self.selected_icon_index as i32 + delta).rem_euclid(len as i32) as usize;
+        let current = self.selected_icon_index as i32;
+        let max_idx = len.saturating_sub(1) as i32;
+        let next = (current + delta).clamp(0, max_idx) as usize;
         self.selected_icon_index = next;
+
+        let height = self
+            .icons_list_area
+            .map(|area| area.height as usize)
+            .unwrap_or(0);
+        scroll::ensure_visible(
+            self.selected_icon_index,
+            &mut self.icons_scroll_offset,
+            height,
+        );
     }
 }
 
@@ -403,6 +439,92 @@ impl App {
             }
             PopupAction::OpenIconInBrowser(icon_name) => {
                 self.open_icon_browser_preview(icon_name);
+            }
+        }
+    }
+
+    pub fn handle_mouse_iconify_search_popup(
+        &mut self,
+        mouse: ratatui::crossterm::event::MouseEvent,
+    ) {
+        use ratatui::crossterm::event::{MouseButton, MouseEventKind};
+
+        let Some(state) = self.iconify_search_popup_state.as_mut() else {
+            return;
+        };
+
+        match state.active_tab {
+            IconifySearchTab::Collections => {
+                let Some(area) = state.collections_list_area else {
+                    return;
+                };
+                let len = state.active_collections().len();
+                let height = area.height as usize;
+
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => scroll::scroll_viewport(
+                        &mut state.collections_scroll_offset,
+                        -3,
+                        len,
+                        height,
+                    ),
+                    MouseEventKind::ScrollDown => scroll::scroll_viewport(
+                        &mut state.collections_scroll_offset,
+                        3,
+                        len,
+                        height,
+                    ),
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if mouse.row >= area.y
+                            && mouse.row < area.y + area.height
+                            && mouse.column >= area.x
+                            && mouse.column < area.x + area.width
+                        {
+                            let row = (mouse.row - area.y) as usize;
+                            let clicked = state.collections_scroll_offset + row;
+                            if clicked < len {
+                                state.selected_collection_index = clicked;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            IconifySearchTab::Icons => {
+                let Some(area) = state.icons_list_area else {
+                    return;
+                };
+                let len = state.visible_icons.len();
+                let height = area.height as usize;
+
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => scroll::scroll_viewport(
+                        &mut state.icons_scroll_offset,
+                        -3,
+                        len,
+                        height,
+                    ),
+                    MouseEventKind::ScrollDown => scroll::scroll_viewport(
+                        &mut state.icons_scroll_offset,
+                        3,
+                        len,
+                        height,
+                    ),
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if mouse.row >= area.y
+                            && mouse.row < area.y + area.height
+                            && mouse.column >= area.x
+                            && mouse.column < area.x + area.width
+                        {
+                            let row = (mouse.row - area.y) as usize;
+                            let clicked = state.icons_scroll_offset + row;
+                            if clicked < len {
+                                state.selected_icon_index = clicked;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -802,16 +924,21 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
     let tabs = Paragraph::new(Line::from(tabs_spans)).alignment(Alignment::Left);
     f.render_widget(tabs, inner[1]);
 
+    let list_area = inner[3];
+    let list_visible_height = list_area.height as usize;
     match state.active_tab {
         IconifySearchTab::Collections => {
-            let collection_items = state.active_collections();
-            let items: Vec<ListItem> = if collection_items.is_empty() {
-                vec![ListItem::new(Line::from(Span::styled(
-                    "No collections",
-                    Style::default().fg(crate::views::theme::SUBTLE_TEXT),
-                )))]
-            } else {
-                collection_items
+            let (items, col_len, col_is_empty): (Vec<ListItem>, usize, bool) = {
+                let collection_items = state.active_collections();
+                let col_len = collection_items.len();
+                let col_is_empty = collection_items.is_empty();
+                let items = if col_is_empty {
+                    vec![ListItem::new(Line::from(Span::styled(
+                        "No collections",
+                        Style::default().fg(crate::views::theme::SUBTLE_TEXT),
+                    )))]
+                } else {
+                    collection_items
                     .iter()
                     .map(|item| {
                         let total_label = match item.total {
@@ -837,11 +964,32 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                         ListItem::new(line)
                     })
                     .collect()
+                };
+                (items, col_len, col_is_empty)
             };
 
+            crate::scroll::clamp_offset(
+                &mut state.collections_scroll_offset,
+                col_len,
+                list_visible_height,
+            );
+            crate::scroll::ensure_visible(
+                state.selected_collection_index,
+                &mut state.collections_scroll_offset,
+                list_visible_height,
+            );
+            state.collections_list_area = Some(list_area);
+
             let mut list_state = ratatui::widgets::ListState::default();
-            if !collection_items.is_empty() {
-                list_state.select(Some(state.selected_collection_index));
+            if !col_is_empty {
+                *list_state.offset_mut() = state.collections_scroll_offset;
+                let in_view = list_visible_height > 0
+                    && state.selected_collection_index >= state.collections_scroll_offset
+                    && state.selected_collection_index
+                        < state.collections_scroll_offset + list_visible_height;
+                if in_view {
+                    list_state.select(Some(state.selected_collection_index));
+                }
             }
 
             let list = List::new(items)
@@ -887,9 +1035,30 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                     .collect()
             };
 
+            let icons_len = state.visible_icons.len();
+            let icons_is_empty = state.visible_icons.is_empty();
+            crate::scroll::clamp_offset(
+                &mut state.icons_scroll_offset,
+                icons_len,
+                list_visible_height,
+            );
+            crate::scroll::ensure_visible(
+                state.selected_icon_index,
+                &mut state.icons_scroll_offset,
+                list_visible_height,
+            );
+            state.icons_list_area = Some(list_area);
+
             let mut list_state = ratatui::widgets::ListState::default();
-            if !state.visible_icons.is_empty() {
-                list_state.select(Some(state.selected_icon_index));
+            if !icons_is_empty {
+                *list_state.offset_mut() = state.icons_scroll_offset;
+                let in_view = list_visible_height > 0
+                    && state.selected_icon_index >= state.icons_scroll_offset
+                    && state.selected_icon_index
+                        < state.icons_scroll_offset + list_visible_height;
+                if in_view {
+                    list_state.select(Some(state.selected_icon_index));
+                }
             }
 
             let title = if let Some(filter_prefix) = &state.selected_collection_filter {

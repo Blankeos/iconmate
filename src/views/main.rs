@@ -12,6 +12,7 @@ use tui_textarea::{Input, Key, TextArea};
 
 use crate::{
     app_state::{App, AppFocus},
+    scroll,
     utils::IconEntry,
 };
 
@@ -68,6 +69,11 @@ pub struct MainState {
     pub status_is_error: bool,
 
     pub search_textarea: TextArea<'static>,
+
+    pub list_scroll_offset: usize,
+    /// Area of the data-rows (excluding header) for the main list, captured at render time.
+    /// Used for mouse hit-testing and viewport sizing.
+    pub list_rows_area: Option<Rect>,
 }
 
 impl MainState {
@@ -78,6 +84,8 @@ impl MainState {
             status_message: None,
             status_is_error: false,
             search_textarea: TextArea::default(),
+            list_scroll_offset: 0,
+            list_rows_area: None,
         }
     }
 
@@ -101,26 +109,42 @@ impl App {
         }
     }
 
+    fn main_visible_height(&self) -> usize {
+        self.main_state
+            .list_rows_area
+            .map(|area| area.height as usize)
+            .unwrap_or(0)
+    }
+
+    fn ensure_main_selection_visible(&mut self) {
+        let height = self.main_visible_height();
+        scroll::ensure_visible(self.selected_index, &mut self.main_state.list_scroll_offset, height);
+    }
+
     fn move_main_selection_up(&mut self) {
         let item_count = self.main_item_count();
         if item_count == 0 {
             self.selected_index = 0;
-        } else if self.selected_index > 0 {
-            self.selected_index -= 1;
-        } else {
-            self.selected_index = item_count - 1;
+            self.main_state.list_scroll_offset = 0;
+            return;
         }
+        if self.selected_index > 0 {
+            self.selected_index -= 1;
+        }
+        self.ensure_main_selection_visible();
     }
 
     fn move_main_selection_down(&mut self) {
         let item_count = self.main_item_count();
         if item_count == 0 {
             self.selected_index = 0;
-        } else if self.selected_index < item_count.saturating_sub(1) {
-            self.selected_index += 1;
-        } else {
-            self.selected_index = 0;
+            self.main_state.list_scroll_offset = 0;
+            return;
         }
+        if self.selected_index + 1 < item_count {
+            self.selected_index += 1;
+        }
+        self.ensure_main_selection_visible();
     }
 
     fn update_filtered_items_main(&mut self) {
@@ -130,6 +154,53 @@ impl App {
             self.selected_index = 0;
         } else if self.selected_index >= self.filtered_items.len() {
             self.selected_index = self.filtered_items.len().saturating_sub(1);
+        }
+        let len = self.main_item_count();
+        let height = self.main_visible_height();
+        scroll::clamp_offset(&mut self.main_state.list_scroll_offset, len, height);
+        self.ensure_main_selection_visible();
+    }
+
+    pub fn handle_mouse_main(&mut self, mouse: ratatui::crossterm::event::MouseEvent) {
+        use ratatui::crossterm::event::{MouseButton, MouseEventKind};
+
+        let Some(rows_area) = self.main_state.list_rows_area else {
+            return;
+        };
+        let len = self.main_item_count();
+        let height = rows_area.height as usize;
+
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                scroll::scroll_viewport(
+                    &mut self.main_state.list_scroll_offset,
+                    -3,
+                    len,
+                    height,
+                );
+            }
+            MouseEventKind::ScrollDown => {
+                scroll::scroll_viewport(
+                    &mut self.main_state.list_scroll_offset,
+                    3,
+                    len,
+                    height,
+                );
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                if mouse.row >= rows_area.y
+                    && mouse.row < rows_area.y + rows_area.height
+                    && mouse.column >= rows_area.x
+                    && mouse.column < rows_area.x + rows_area.width
+                {
+                    let row_in_list = (mouse.row - rows_area.y) as usize;
+                    let clicked_idx = self.main_state.list_scroll_offset + row_in_list;
+                    if clicked_idx < len {
+                        self.selected_index = clicked_idx;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -389,11 +460,40 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &mut App) {
             .add_modifier(Modifier::BOLD),
     );
 
+    let table_area = main_chunks[5];
+    // Data rows area excludes the 1-row header.
+    let rows_area = Rect {
+        x: table_area.x,
+        y: table_area.y.saturating_add(1),
+        width: table_area.width,
+        height: table_area.height.saturating_sub(1),
+    };
+    let visible_height = rows_area.height as usize;
+    let list_len = if show_no_results { 0 } else { item_list.len() };
+
+    // Clamp offset to valid range if the viewport just changed size.
+    crate::scroll::clamp_offset(&mut main_state.list_scroll_offset, list_len, visible_height);
+    // Ensure selection is visible after keyboard navigation; no-op if already in view.
+    crate::scroll::ensure_visible(
+        app.selected_index,
+        &mut main_state.list_scroll_offset,
+        visible_height,
+    );
+    main_state.list_rows_area = Some(rows_area);
+
     let mut state = ratatui::widgets::TableState::default();
-    if !show_no_results && has_rows {
-        state.select(Some(app.selected_index));
+    if has_rows {
+        *state.offset_mut() = main_state.list_scroll_offset;
+        if !show_no_results {
+            let in_view = visible_height > 0
+                && app.selected_index >= main_state.list_scroll_offset
+                && app.selected_index < main_state.list_scroll_offset + visible_height;
+            if in_view {
+                state.select(Some(app.selected_index));
+            }
+        }
     }
-    f.render_stateful_widget(table, main_chunks[5], &mut state);
+    f.render_stateful_widget(table, table_area, &mut state);
 
     let shortcuts = crate::views::theme::shortcut_line(&[
         ("Add", "a"),

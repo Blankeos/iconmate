@@ -70,3 +70,11 @@
 ---
 
 - [x] Non-interactive delete mode
+- [ ] Flutter compatibility
+- [x] List scroll behavior better:
+  - [x] Keyboard
+    - Pressing down, Only start scrolling down when selected/cursor is on the last viewable element (I think current behavior).
+    - Pressing up, Only start scrolling up when the selected/cursor is already on the first viewable element. Currently the behavior is not like this. It changes the current selection and scrolls too (even if the item is still the last item).
+  - [x] Mouse
+    - Clicking a list item - just essentially skips cursor to select the item as the new selected/cursor. Shouldn't really imitate 'enter', it just changes the selection.
+    - Scrolling up or down - just scrolls the scroll value obviously. It doesnt change the current selection.

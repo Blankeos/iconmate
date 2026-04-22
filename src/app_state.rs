@@ -132,4 +132,12 @@ impl App {
             AppFocus::IconifySearchPopup => self.handlekeys_iconify_search_popup(key),
         }
     }
+
+    pub fn handle_mouse(&mut self, mouse: ratatui::crossterm::event::MouseEvent) {
+        match self.app_focus {
+            AppFocus::Main => self.handle_mouse_main(mouse),
+            AppFocus::IconifySearchPopup => self.handle_mouse_iconify_search_popup(mouse),
+            _ => {}
+        }
+    }
 }
