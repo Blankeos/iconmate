@@ -57,6 +57,7 @@ pub struct AddPopupState {
     pub inputs: Vec<TextArea<'static>>,
 
     pub preset_index: usize,
+    pub preset_scroll_offset: usize,
     pub presets_filtered: Vec<PresetOption>,
     pub preset_filter: String,
     pub status_message: Option<String>,
@@ -275,6 +276,7 @@ impl App {
             filename: None,
 
             preset_index: selected_index,
+            preset_scroll_offset: 0,
             preset_filter: String::new(),
             inputs: vec![
                 TextArea::default(), // preset filter
@@ -512,8 +514,9 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
 
         // Create a selectable list for preset
         let mut state_store = ratatui::widgets::ListState::default();
-        let mut items: Vec<ListItem> = {
-            let filtered: Vec<_> = state
+        let has_presets = !state.presets_filtered.is_empty();
+        let mut items: Vec<ListItem> = if has_presets {
+            state
                 .presets_filtered
                 .iter()
                 .map(|p| {
@@ -524,18 +527,38 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
                         p.description
                     ))
                 })
-                .collect();
-            filtered
+                .collect()
+        } else {
+            Vec::new()
         };
-        if items.is_empty() {
-            state_store.select(None);
+        if !has_presets {
             items = vec![
                 ListItem::new("No presets found")
                     .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT)),
             ];
-        } else {
-            state_store.select(Some(state.preset_index))
-        };
+        }
+
+        // The Block title consumes row 0; items render below it.
+        let preset_rows_height = preset_area.height.saturating_sub(1) as usize;
+        if has_presets {
+            crate::scroll::clamp_offset(
+                &mut state.preset_scroll_offset,
+                state.presets_filtered.len(),
+                preset_rows_height,
+            );
+            crate::scroll::ensure_visible(
+                state.preset_index,
+                &mut state.preset_scroll_offset,
+                preset_rows_height,
+            );
+            *state_store.offset_mut() = state.preset_scroll_offset;
+            let in_view = preset_rows_height > 0
+                && state.preset_index >= state.preset_scroll_offset
+                && state.preset_index < state.preset_scroll_offset + preset_rows_height;
+            if in_view {
+                state_store.select(Some(state.preset_index));
+            }
+        }
 
         let (preset_bg, preset_title) = field_theme(state.current_input == PRESET_FIELD_IDX);
         let preset_filter_hint = if state.preset_filter.is_empty() {

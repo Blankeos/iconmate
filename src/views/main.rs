@@ -128,9 +128,8 @@ impl App {
             self.main_state.list_scroll_offset = 0;
             return;
         }
-        if self.selected_index > 0 {
-            self.selected_index -= 1;
-        }
+        self.selected_index = (self.selected_index as i32 - 1)
+            .rem_euclid(item_count as i32) as usize;
         self.ensure_main_selection_visible();
     }
 
@@ -141,9 +140,7 @@ impl App {
             self.main_state.list_scroll_offset = 0;
             return;
         }
-        if self.selected_index + 1 < item_count {
-            self.selected_index += 1;
-        }
+        self.selected_index = (self.selected_index + 1) % item_count;
         self.ensure_main_selection_visible();
     }
 

@@ -304,8 +304,7 @@ impl IconifySearchPopupState {
         }
 
         let current = self.selected_collection_index as i32;
-        let max_idx = len.saturating_sub(1) as i32;
-        let next = (current + delta).clamp(0, max_idx) as usize;
+        let next = (current + delta).rem_euclid(len as i32) as usize;
         self.selected_collection_index = next;
 
         let height = self
@@ -328,8 +327,7 @@ impl IconifySearchPopupState {
         }
 
         let current = self.selected_icon_index as i32;
-        let max_idx = len.saturating_sub(1) as i32;
-        let next = (current + delta).clamp(0, max_idx) as usize;
+        let next = (current + delta).rem_euclid(len as i32) as usize;
         self.selected_icon_index = next;
 
         let height = self
@@ -924,8 +922,16 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
     let tabs = Paragraph::new(Line::from(tabs_spans)).alignment(Alignment::Left);
     f.render_widget(tabs, inner[1]);
 
+    // The List block has a title which consumes the top row; subtract it so
+    // scroll math + mouse hit-testing use the actual item-rows area.
     let list_area = inner[3];
-    let list_visible_height = list_area.height as usize;
+    let list_rows_area = Rect {
+        x: list_area.x,
+        y: list_area.y.saturating_add(1),
+        width: list_area.width,
+        height: list_area.height.saturating_sub(1),
+    };
+    let list_visible_height = list_rows_area.height as usize;
     match state.active_tab {
         IconifySearchTab::Collections => {
             let (items, col_len, col_is_empty): (Vec<ListItem>, usize, bool) = {
@@ -978,7 +984,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                 &mut state.collections_scroll_offset,
                 list_visible_height,
             );
-            state.collections_list_area = Some(list_area);
+            state.collections_list_area = Some(list_rows_area);
 
             let mut list_state = ratatui::widgets::ListState::default();
             if !col_is_empty {
@@ -1047,7 +1053,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                 &mut state.icons_scroll_offset,
                 list_visible_height,
             );
-            state.icons_list_area = Some(list_area);
+            state.icons_list_area = Some(list_rows_area);
 
             let mut list_state = ratatui::widgets::ListState::default();
             if !icons_is_empty {
