@@ -3,7 +3,8 @@ name: iconmate
 description: >-
   Use when the user asks to add, search, list, or manage SVG icons in a JS/TS project.
   Trigger phrases: "add an icon", "search for icons", "find an icon", "add svg",
-  "icon for heart", "list icons", "delete icon", "rename icon", "iconmate", "iconify".
+  "icon for heart", "list icons", "delete icon", "rename icon", "sync icons",
+  "reconcile icons", "iconmate", "iconify".
 metadata:
   author: blankeos
   version: "1.1.0"
@@ -101,6 +102,26 @@ iconmate delete --folder <folder>
 ```bash
 iconmate list
 ```
+
+### Sync (reconcile barrel with disk)
+
+Use when an SVG was added or removed manually and the barrel (`index.ts` / `lib/icons.dart`) drifted out of sync.
+
+```bash
+# Dry-run — prints the plan, writes nothing. Always safe to run first.
+iconmate sync --folder <folder>
+
+# Apply additions (orphan SVGs → new barrel entries). Non-destructive.
+iconmate sync --folder <folder> --apply
+
+# Also remove orphan entries (barrel points at a missing SVG).
+iconmate sync --folder <folder> --apply --prune
+
+# Resolve a collision by overriding the inferred identifier.
+iconmate sync --folder <folder> --apply --rename IconHeart=IconHeart2
+```
+
+Output is deterministic and parseable. Exits non-zero when collisions exist. `sync` only edits the barrel — it never touches SVG files.
 
 ### Browse Iconify collections
 

@@ -80,4 +80,4 @@
     - Scrolling up or down - just scrolls the scroll value obviously. It doesnt change the current selection.
 
 - [ ] Formatting aware barrel files i.e. "./"; or "./" or './' or './'; or "./something.tsx" (for --react or --solid, etc stuff, if it's allowed in tsconfig), should be smart enough to replicate that formatting in js files.
-- [ ] The iconmate sync
+- [x] The iconmate sync (CLI + read-only TUI dialog; see `_docs/iconmate-sync-plan.md`)

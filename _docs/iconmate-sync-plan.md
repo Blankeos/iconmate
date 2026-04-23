@@ -1,6 +1,6 @@
 # `iconmate sync` — Plan
 
-Status: **Planning.** Follow-up feature, **not** part of the initial Flutter preset PR. Design decisions captured from the initial discussion.
+Status: **v1 shipped.** CLI (`iconmate sync [--apply] [--prune] [--rename old=new]`) and a read-only TUI dialog (`Shift+S`) now implement the reconciliation flow. Path-drift detection (§3.3) and inline TUI collision-rename (§4.3) are deferred to a follow-up.
 
 ## 1. Why it exists
 

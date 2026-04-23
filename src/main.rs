@@ -3,6 +3,7 @@ mod config;
 mod flutter;
 mod iconify;
 mod scroll;
+mod sync;
 mod tui;
 mod utils;
 mod viewer;
@@ -140,6 +141,27 @@ enum Commands {
     Iconify {
         #[command(subcommand)]
         command: IconifyCommands,
+    },
+
+    /// Reconcile the barrel file (index.ts / lib/icons.dart) with the SVGs on disk.
+    /// Dry-run by default. Never touches SVG assets.
+    Sync {
+        /// Pathname of the folder where icons live.
+        #[arg(long)]
+        folder: Option<PathBuf>,
+
+        /// Actually write changes. Without this flag, sync prints the plan and exits.
+        #[arg(long)]
+        apply: bool,
+
+        /// Also remove orphan entries (barrel entries whose SVG is missing).
+        /// Requires --apply.
+        #[arg(long)]
+        prune: bool,
+
+        /// Override an inferred identifier. Repeatable. Format: `--rename old=new`.
+        #[arg(long = "rename", value_name = "OLD=NEW")]
+        renames: Vec<String>,
     },
 }
 
@@ -1304,6 +1326,84 @@ async fn run_delete_prompt_mode(
     Ok(())
 }
 
+fn run_sync_command(
+    cli: &CliArgs,
+    command_folder: Option<&PathBuf>,
+    apply: bool,
+    prune: bool,
+    renames: &[String],
+) -> anyhow::Result<()> {
+    use std::collections::HashMap;
+
+    if prune && !apply {
+        anyhow::bail!("--prune requires --apply.");
+    }
+
+    let folder_override = command_folder.or(cli.folder.as_ref());
+    let resolved = config::resolve_tui_config(
+        folder_override,
+        cli.preset.as_ref(),
+        cli.output_line_template.as_ref(),
+    )?;
+    let folder = PathBuf::from(&resolved.folder);
+
+    let mut rename_map: HashMap<String, String> = HashMap::new();
+    for raw in renames {
+        let (old, new) = raw
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("--rename expects `old=new`, got `{raw}`"))?;
+        let old = old.trim();
+        let new = new.trim();
+        if old.is_empty() || new.is_empty() {
+            anyhow::bail!("--rename expects a non-empty old and new identifier");
+        }
+        rename_map.insert(old.to_string(), new.to_string());
+    }
+
+    let flutter_barrel_file = resolved.flutter_barrel_file.as_deref().map(Path::new);
+    let ctx = sync::SyncContext {
+        folder: &folder,
+        preset: &resolved.preset,
+        output_line_template: &resolved.output_line_template,
+        flutter_barrel_file,
+        flutter_barrel_class: resolved.flutter_barrel_class.as_deref(),
+        renames: &rename_map,
+    };
+
+    let plan = sync::compute_sync_plan(&ctx)?;
+    let use_color = std::io::IsTerminal::is_terminal(&std::io::stdout())
+        && std::env::var_os("NO_COLOR").is_none();
+    print!("{}", sync::render_plan_text(&plan, use_color));
+
+    if !apply {
+        if !plan.collisions.is_empty() {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    if !plan.collisions.is_empty() {
+        anyhow::bail!(
+            "Cannot --apply: {} collision(s). Resolve with --rename or rename the SVG on disk.",
+            plan.collisions.len()
+        );
+    }
+
+    let summary = sync::apply_sync_plan(&plan, &ctx, sync::ApplyOptions { prune })?;
+    println!(
+        "\nApplied: +{} added, -{} removed.",
+        summary.added, summary.removed
+    );
+    if !prune && !plan.removals.is_empty() {
+        println!(
+            "Note: {} orphan entr{} left in place. Re-run with --prune to remove them.",
+            plan.removals.len(),
+            if plan.removals.len() == 1 { "y" } else { "ies" }
+        );
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = CliArgs::parse();
@@ -1346,6 +1446,12 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::List { ref folder }) => run_list_mode(&args, folder.as_ref()),
         Some(Commands::Iconify { command }) => run_iconify_command(command).await,
+        Some(Commands::Sync {
+            ref folder,
+            apply,
+            prune,
+            ref renames,
+        }) => run_sync_command(&args, folder.as_ref(), apply, prune, renames),
         None => {
             let resolved = config::resolve_tui_config(
                 args.folder.as_ref(),

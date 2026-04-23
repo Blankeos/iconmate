@@ -271,6 +271,18 @@ Rename an icon from the TUI (`iconmate` → select an icon → press `r`).
 > [!NOTE]
 > iconmate only renames the **SVG file on disk** and updates the path reference in the export line / barrel. To rename the **exported alias** (e.g. `IconHeart` → `IconFavorite`, or `AppIcons.heart` → `AppIcons.favorite`), use your IDE's LSP rename so every call site updates in one shot.
 
+### Sync icons
+
+Reconciles the barrel (`index.ts` / `lib/icons.dart`) with the SVGs on disk — useful if someone dropped an SVG in manually or deleted one without iconmate.
+
+```bash
+iconmate sync                       # dry-run: print the plan
+iconmate sync --apply               # add orphan files to the barrel
+iconmate sync --apply --prune       # also remove entries whose SVG is gone
+```
+
+Dry-run by default. Never touches SVG files — only the barrel. From the TUI, press `Shift+S` for a read-only view of the current drift.
+
 ### List current icons
 
 ```bash

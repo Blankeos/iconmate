@@ -90,6 +90,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppFocus::IconifySearchPopup => {
             crate::views::iconify_search_popup::render_iconify_search_popup(f, app)
         }
+        AppFocus::SyncPopup => crate::views::sync_popup::render_sync_popup(f, app),
         _ => {}
     }
 }

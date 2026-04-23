@@ -10,6 +10,7 @@ pub enum AppFocus {
     RenamePopup,
     HelpPopup,
     IconifySearchPopup,
+    SyncPopup,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +80,7 @@ pub struct App {
     pub rename_popup_state: Option<crate::views::rename_popup::RenamePopupState>,
     pub iconify_search_popup_state:
         Option<crate::views::iconify_search_popup::IconifySearchPopupState>,
+    pub sync_popup_state: Option<crate::views::sync_popup::SyncPopupState>,
 
     pub next_async_request_id: u64,
 }
@@ -102,6 +104,7 @@ impl App {
             delete_popup_state: None,
             rename_popup_state: None,
             iconify_search_popup_state: None,
+            sync_popup_state: None,
             next_async_request_id: 0,
             main_state: MainState::new(),
         };
@@ -137,6 +140,7 @@ impl App {
             AppFocus::RenamePopup => self.handlekeys_rename_popup(key),
             AppFocus::HelpPopup => self.handlekeys_help_popup(key),
             AppFocus::IconifySearchPopup => self.handlekeys_iconify_search_popup(key),
+            AppFocus::SyncPopup => self.handlekeys_sync_popup(key),
         }
     }
 

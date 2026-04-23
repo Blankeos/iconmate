@@ -272,6 +272,9 @@ impl App {
             Key::Char('?') => {
                 self.init_help_popup();
             }
+            Key::Char('S') => {
+                self.init_sync_popup();
+            }
             Key::Up | Key::Char('k') => self.move_main_selection_up(),
             Key::Down | Key::Char('j') => self.move_main_selection_down(),
             _ => {}
@@ -501,6 +504,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &mut App) {
         ("Delete", "d"),
         ("Rename", "r"),
         ("Open", "o"),
+        ("Sync", "S"),
         ("Help", "?"),
         ("Quit", "q"),
     ]);
