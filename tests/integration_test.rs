@@ -563,3 +563,142 @@ fn test_list_command_reports_no_icons_when_index_is_missing() {
         "stdout should explain that no icons were found"
     );
 }
+
+#[test]
+fn test_flutter_preset_add_creates_barrel_and_svg() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let icons_folder = temp_dir.path().join("assets/icons");
+    let barrel_path = temp_dir.path().join("lib/icons.dart");
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    let output = Command::new(binary_path)
+        .args([
+            "add",
+            "--preset",
+            "flutter",
+            "--folder",
+            icons_folder.to_str().unwrap(),
+            "--icon",
+            "heroicons:heart",
+            "--flutter-barrel-file",
+            barrel_path.to_str().unwrap(),
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Flutter add command failed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(barrel_path.exists(), "lib/icons.dart should be created");
+    let contents = std::fs::read_to_string(&barrel_path).expect("read barrel");
+    assert!(contents.contains("class AppIcons {"), "barrel has class");
+    assert!(
+        contents.contains("static const String heart"),
+        "barrel has heart entry"
+    );
+    assert!(
+        contents.contains("heroicons:heart.svg"),
+        "barrel references the svg file"
+    );
+
+    let svg_file = icons_folder.join("heroicons:heart.svg");
+    assert!(svg_file.exists(), "SVG file should be written");
+}
+
+#[test]
+fn test_flutter_preset_add_infers_name_from_iconify_id() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let icons_folder = temp_dir.path().join("assets/icons");
+    let barrel_path = temp_dir.path().join("lib/icons.dart");
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    // Note: no --name passed; Flutter preset should infer `chevronRight`
+    // from `heroicons:chevron-right`.
+    let output = Command::new(binary_path)
+        .args([
+            "add",
+            "--preset",
+            "flutter",
+            "--folder",
+            icons_folder.to_str().unwrap(),
+            "--icon",
+            "heroicons:chevron-right",
+            "--flutter-barrel-file",
+            barrel_path.to_str().unwrap(),
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Flutter add should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let contents = std::fs::read_to_string(&barrel_path).expect("read barrel");
+    assert!(
+        contents.contains("static const String chevronRight"),
+        "identifier auto-inferred to lowerCamelCase: got {contents}"
+    );
+}
+
+#[test]
+fn test_flutter_preset_add_uses_collection_prefix_on_collision() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let icons_folder = temp_dir.path().join("assets/icons");
+    let barrel_path = temp_dir.path().join("lib/icons.dart");
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    // First add: `heart` identifier.
+    let first = Command::new(binary_path)
+        .args([
+            "add",
+            "--preset",
+            "flutter",
+            "--folder",
+            icons_folder.to_str().unwrap(),
+            "--icon",
+            "heroicons:heart",
+            "--flutter-barrel-file",
+            barrel_path.to_str().unwrap(),
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("first add should run");
+    assert!(first.status.success());
+
+    // Second add with the same icon name from a different collection — should
+    // fall back to `mdiHeart` because `heart` is taken.
+    let second = Command::new(binary_path)
+        .args([
+            "add",
+            "--preset",
+            "flutter",
+            "--folder",
+            icons_folder.to_str().unwrap(),
+            "--icon",
+            "mdi:heart",
+            "--flutter-barrel-file",
+            barrel_path.to_str().unwrap(),
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("second add should run");
+    assert!(
+        second.status.success(),
+        "second add should use fallback identifier: stderr={}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    let contents = std::fs::read_to_string(&barrel_path).expect("read barrel");
+    assert!(contents.contains("static const String heart"));
+    assert!(
+        contents.contains("static const String mdiHeart"),
+        "collision fallback should produce mdiHeart: got {contents}"
+    );
+}

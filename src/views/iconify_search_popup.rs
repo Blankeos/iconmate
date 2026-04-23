@@ -1159,6 +1159,8 @@ mod tests {
             svg_viewer_cmd_source: "test".to_string(),
             global_config_loaded: false,
             project_config_loaded: false,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         };
 
         App::new(config)
@@ -1454,6 +1456,8 @@ mod tests {
             svg_viewer_cmd_source: "test".to_string(),
             global_config_loaded: false,
             project_config_loaded: false,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         };
 
         App::new(config)

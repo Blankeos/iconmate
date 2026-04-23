@@ -1,7 +1,93 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
+
+/// Flutter-preset rename: rename the SVG file on disk and update the path
+/// string inside the Dart barrel. Leaves the Dart identifier untouched — the
+/// user renames via LSP if they want the symbol changed.
+fn perform_flutter_rename(
+    folder: &str,
+    flutter_barrel_file: Option<&str>,
+    flutter_barrel_class: Option<&str>,
+    current_file_path: &str,
+    new_file_input: &str,
+) -> anyhow::Result<()> {
+    use std::path::Component;
+
+    let current_rel = current_file_path.trim().to_string();
+    if current_rel.is_empty() {
+        anyhow::bail!("Current icon path is empty");
+    }
+
+    let mut new_rel = new_file_input.trim().to_string();
+    if new_rel.is_empty() {
+        anyhow::bail!("New filename cannot be empty");
+    }
+
+    let new_path_check = Path::new(&new_rel);
+    if new_path_check.is_absolute() {
+        anyhow::bail!("Please provide a relative filename");
+    }
+    if new_path_check
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        anyhow::bail!("Parent directory traversals are not allowed");
+    }
+
+    // Preserve existing extension if the user typed just a bare name.
+    if Path::new(&new_rel).extension().is_none() {
+        if let Some(ext) = Path::new(&current_rel)
+            .extension()
+            .and_then(|ext| ext.to_str())
+        {
+            new_rel = format!("{}.{}", new_rel, ext);
+        }
+    }
+
+    if new_rel == current_rel {
+        anyhow::bail!("Filename is unchanged");
+    }
+
+    let folder_path = Path::new(folder);
+    let current_abs = folder_path.join(&current_rel);
+    if !current_abs.exists() {
+        anyhow::bail!("Icon file not found: {}", current_abs.display());
+    }
+
+    let new_abs = folder_path.join(&new_rel);
+    if new_abs.exists() {
+        anyhow::bail!("Target file already exists: {}", new_abs.display());
+    }
+
+    let barrel_path: PathBuf = flutter_barrel_file
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::flutter::DEFAULT_FLUTTER_BARREL_FILE));
+    let class = flutter_barrel_class.unwrap_or(crate::flutter::DEFAULT_FLUTTER_BARREL_CLASS);
+
+    if !barrel_path.exists() {
+        anyhow::bail!("No barrel file found at {}", barrel_path.display());
+    }
+
+    let entries = crate::flutter::read_barrel_entries(&barrel_path)?;
+    let current_asset = crate::flutter::asset_path_for(folder, &current_rel);
+    let new_asset = crate::flutter::asset_path_for(folder, &new_rel);
+    let updated = crate::flutter::rename_entry_path(&entries, &current_asset, &new_asset)?;
+
+    if let Some(parent) = new_abs.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&current_abs, &new_abs)?;
+
+    if let Err(err) = crate::flutter::write_barrel(&barrel_path, class, &updated) {
+        // Roll back the rename so state stays consistent.
+        let _ = std::fs::rename(&new_abs, &current_abs);
+        return Err(err);
+    }
+
+    Ok(())
+}
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
@@ -91,8 +177,19 @@ impl App {
             return Err("Please enter a new filename.".to_string());
         }
 
-        crate::utils::rename_icon_entry(&self.config.folder, &item.file_path, &new_filename)
+        if self.config.preset == "flutter" {
+            perform_flutter_rename(
+                &self.config.folder,
+                self.config.flutter_barrel_file.as_deref(),
+                self.config.flutter_barrel_class.as_deref(),
+                &item.file_path,
+                &new_filename,
+            )
             .map_err(|error| error.to_string())?;
+        } else {
+            crate::utils::rename_icon_entry(&self.config.folder, &item.file_path, &new_filename)
+                .map_err(|error| error.to_string())?;
+        }
 
         self.init_icons();
         self.close_rename_popup();

@@ -70,7 +70,7 @@
 ---
 
 - [x] Non-interactive delete mode
-- [ ] Flutter compatibility
+- [x] Flutter compatibility (`--preset flutter`, see `_docs/flutter-preset-plan.md`)
 - [x] List scroll behavior better:
   - [x] Keyboard
     - Pressing down, Only start scrolling down when selected/cursor is on the last viewable element (I think current behavior).
@@ -78,3 +78,6 @@
   - [x] Mouse
     - Clicking a list item - just essentially skips cursor to select the item as the new selected/cursor. Shouldn't really imitate 'enter', it just changes the selection.
     - Scrolling up or down - just scrolls the scroll value obviously. It doesnt change the current selection.
+
+- [ ] Formatting aware barrel files i.e. "./"; or "./" or './' or './'; or "./something.tsx" (for --react or --solid, etc stuff, if it's allowed in tsconfig), should be smart enough to replicate that formatting in js files.
+- [ ] The iconmate sync

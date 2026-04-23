@@ -1,5 +1,37 @@
+use std::path::PathBuf;
+
 use crate::app_state::{App, AppFocus};
 use crate::utils::popup_area;
+
+/// Flutter-preset delete: rewrite the Dart barrel without the entry whose
+/// asset path matches the deleted file. The SVG on disk is handled by the
+/// caller.
+fn perform_flutter_delete(
+    folder: &str,
+    flutter_barrel_file: Option<&str>,
+    flutter_barrel_class: Option<&str>,
+    file_path: &str,
+) -> anyhow::Result<()> {
+    let barrel_path: PathBuf = flutter_barrel_file
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::flutter::DEFAULT_FLUTTER_BARREL_FILE));
+    let class = flutter_barrel_class.unwrap_or(crate::flutter::DEFAULT_FLUTTER_BARREL_CLASS);
+    let entries = crate::flutter::read_barrel_entries(&barrel_path)?;
+
+    // Try both folder-prefixed and bare paths since older entries or external
+    // tooling may have stored either shape.
+    let asset_path = crate::flutter::asset_path_for(folder, file_path);
+    let (updated, removed) = crate::flutter::remove_entry_by_path(&entries, &asset_path);
+    let (updated, removed) = if removed {
+        (updated, true)
+    } else {
+        crate::flutter::remove_entry_by_path(&entries, file_path)
+    };
+    if !removed {
+        return Ok(());
+    }
+    crate::flutter::write_barrel(&barrel_path, class, &updated)
+}
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
@@ -43,9 +75,27 @@ impl App {
                     self.items.remove(pos);
                 }
 
-                // Persist the change to disk
                 let abs_file_path = std::path::Path::new(&self.config.folder).join(&item.file_path);
-                if let Err(e) =
+
+                if self.config.preset == "flutter" {
+                    if let Err(e) = perform_flutter_delete(
+                        &self.config.folder,
+                        self.config.flutter_barrel_file.as_deref(),
+                        self.config.flutter_barrel_class.as_deref(),
+                        &item.file_path,
+                    ) {
+                        eprintln!("Failed to update Dart barrel: {}", e);
+                    }
+                    if abs_file_path.exists() {
+                        if let Err(e) = std::fs::remove_file(&abs_file_path) {
+                            eprintln!(
+                                "Failed to delete {}: {}",
+                                abs_file_path.display(),
+                                e
+                            );
+                        }
+                    }
+                } else if let Err(e) =
                     crate::utils::delete_icon_entry(abs_file_path.to_str().unwrap_or(""))
                 {
                     eprintln!("Failed to delete icon file: {}", e);

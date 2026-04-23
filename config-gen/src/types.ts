@@ -1,4 +1,11 @@
-export type IconmatePreset = "normal" | "react" | "svelte" | "solid" | "vue" | "emptysvg";
+export type IconmatePreset =
+  | "normal"
+  | "react"
+  | "svelte"
+  | "solid"
+  | "vue"
+  | "emptysvg"
+  | "flutter";
 
 /**
  * Project-level Iconmate config loaded from `iconmate.config.json`.
@@ -6,19 +13,22 @@ export type IconmatePreset = "normal" | "react" | "svelte" | "solid" | "vue" | "
 export interface IconmateLocalConfig {
   /**
    * Folder where icons are written.
-   * Default: `src/assets/icons`.
+   * Default: `src/assets/icons` (or `assets/icons` when preset is `flutter`).
    */
   folder?: string;
 
   /**
-   * Output preset. `normal` means plain `.svg` mode.
-   * Default: `"normal"`.
+   * Output preset. `normal` means plain `.svg` mode. `flutter` writes SVGs
+   * and a Dart barrel file.
+   * Default: `"normal"` (auto-switches to `"flutter"` when a Flutter project
+   * is detected and no explicit preset is configured).
    */
   preset?: IconmatePreset;
 
   /**
    * Template used for each export line in `index.ts`.
    * Supported variables: `%name%`, `%icon%`, `%ext%`.
+   * Ignored when preset is `"flutter"` (Dart barrel format is fixed).
    */
   output_line_template?: string;
 
@@ -27,6 +37,18 @@ export interface IconmateLocalConfig {
    * Use `%filename%` as the SVG file path placeholder.
    */
   svg_view_cmd?: string;
+
+  /**
+   * Flutter preset only: project-root-relative path to the Dart barrel file.
+   * Default: `"lib/icons.dart"`.
+   */
+  flutter_barrel_file?: string;
+
+  /**
+   * Flutter preset only: Dart class name emitted into the barrel.
+   * Default: `"AppIcons"`.
+   */
+  flutter_barrel_class?: string;
 }
 
 /**

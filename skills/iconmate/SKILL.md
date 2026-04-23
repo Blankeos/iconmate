@@ -55,9 +55,9 @@ Present results to the user and let them pick.
 iconmate add --folder <folder> --icon <prefix:name> --name <PascalCaseName>
 ```
 
-- `--folder`: Icon output directory (default: `src/assets/icons`). Check `iconmate.config.json` or `iconmate.config.jsonc` in the project root for a configured folder.
+- `--folder`: Icon output directory (default: `src/assets/icons`, or `assets/icons` when preset is `flutter`). Check `iconmate.config.json` or `iconmate.config.jsonc` in the project root for a configured folder.
 - `--icon`: Accepts an Iconify name (e.g. `mdi:heart`), a URL, or raw SVG markup.
-- `--name`: PascalCase alias used in the export (e.g. `Heart`).
+- `--name`: Optional when `--icon` is a URL or iconify id (iconmate auto-infers from the icon name). PascalCase for JS presets (e.g. `Heart`), lowerCamelCase for the `flutter` preset (e.g. `heart`). On collision, iconmate falls back to the collection-prefixed form (e.g. `MdiHeart` / `mdiHeart`).
 - `--preset`: Framework preset. Check config for the project default.
   - `normal` → `.svg` (plain SVG file)
   - `react` → `.tsx` (React component)
@@ -65,6 +65,7 @@ iconmate add --folder <folder> --icon <prefix:name> --name <PascalCaseName>
   - `solid` → `.tsx` (SolidJS component)
   - `vue` → `.vue` (Vue component)
   - `emptysvg` → `.svg` (empty placeholder SVG)
+  - `flutter` → `.svg` + regenerated Dart barrel at `lib/icons.dart`. Auto-selected when a `pubspec.yaml` with a `flutter:` section is detected. Use with `--flutter-barrel-file` (default `lib/icons.dart`) and `--flutter-barrel-class` (default `AppIcons`) to customize barrel output. iconmate owns `lib/icons.dart` entirely — call sites use `AppIcons.<name>` (e.g. `SvgPicture.asset(AppIcons.heart, width: 24)`).
 
 ### 3. Verify
 

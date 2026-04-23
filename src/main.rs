@@ -1,5 +1,6 @@
 mod app_state;
 mod config;
+mod flutter;
 mod iconify;
 mod scroll;
 mod tui;
@@ -50,6 +51,14 @@ struct CliArgs {
     /// Normally for complex usecases where for example you might need url suffixes for imports i.e. `?react`.
     #[arg(long)]
     output_line_template: Option<String>,
+
+    /// Flutter preset only: path to the Dart barrel file (project-root-relative).
+    #[arg(long)]
+    flutter_barrel_file: Option<PathBuf>,
+
+    /// Flutter preset only: Dart class name in the barrel.
+    #[arg(long)]
+    flutter_barrel_class: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -65,8 +74,9 @@ enum Commands {
         folder: PathBuf,
 
         /// The alias for the SVG, used in the index.ts export (e.g., "Chevron").
+        /// Optional when --icon is a URL or iconify id — iconmate auto-infers from the icon name.
         #[arg(long)]
-        name: String,
+        name: Option<String>,
 
         /// The name of the icon (e.g., "stash:chevron") or a full URL to the icon (e.g., "https://api.iconify.design/stash:chevron.svg") or an SVG.
         #[arg(long)]
@@ -84,6 +94,14 @@ enum Commands {
             default_value = "export { default as Icon%name% } from './%icon%%ext%';"
         )]
         output_line_template: String,
+
+        /// Flutter preset only: path to the Dart barrel file (project-root-relative). Default: lib/icons.dart
+        #[arg(long)]
+        flutter_barrel_file: Option<PathBuf>,
+
+        /// Flutter preset only: Dart class name in the barrel. Default: AppIcons
+        #[arg(long)]
+        flutter_barrel_class: Option<String>,
     },
 
     /// Start an interactive prompt to add icons.
@@ -192,11 +210,13 @@ enum IconifyCommands {
 /// Configuration for the icon fetching and saving logic.
 struct AppConfig {
     folder: PathBuf,
-    name: String,
+    name: Option<String>,
     icon: Option<String>,
     filename: Option<String>,
     output_line_template: String,
     preset: Option<Preset>,
+    flutter_barrel_file: Option<PathBuf>,
+    flutter_barrel_class: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -373,26 +393,63 @@ async fn run_iconify_command(command: IconifyCommands) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Resolve the final component/identifier name from CLI input + the icon
+/// source. For every preset, `--name` is optional as long as the icon source
+/// is a URL or iconify id we can derive a default from.
+///
+/// `collection_hint` (e.g. "mdi" from "mdi:heart") is used as the fallback
+/// segment when the primary name collides with an existing entry.
+fn resolve_icon_alias(
+    cli_name: Option<&str>,
+    icon_source: Option<&str>,
+) -> anyhow::Result<(String, Option<String>)> {
+    if let Some(name) = cli_name {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            let collection = icon_source
+                .and_then(crate::utils::iconify_name_from_icon_source)
+                .and_then(|iconify| iconify.split_once(':').map(|(p, _)| p.to_string()));
+            return Ok((trimmed.to_string(), collection));
+        }
+    }
+
+    let Some(icon) = icon_source else {
+        anyhow::bail!("--name is required when no icon source is provided.");
+    };
+
+    let Some((default_name, iconify)) =
+        crate::utils::default_name_and_filename_from_icon_source(icon)
+    else {
+        anyhow::bail!(
+            "Could not infer --name from icon source '{}'. Pass --name explicitly.",
+            icon
+        );
+    };
+    let collection = iconify
+        .split_once(':')
+        .map(|(p, _)| p.to_string());
+    Ok((default_name, collection))
+}
+
 /// The main logic of the application.
-/// Fetches an icon, saves it, and updates the index file.
+/// Fetches an icon, saves it, and updates the index (or Dart barrel).
 async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     let folder_path = &config.folder;
-    let icon_alias = &config.name;
+    let effective_preset = config.preset.clone().unwrap_or(Preset::Normal);
 
-    // Ensure the folder exists
+    // For Flutter, --name may be lowerCamelCase from user; for JS presets
+    // PascalCase is conventional. Either way, `resolve_icon_alias` returns the
+    // raw string — sanitization per-preset happens below.
+    let (raw_alias, collection_hint) =
+        resolve_icon_alias(config.name.as_deref(), config.icon.as_deref())?;
+
     fs::create_dir_all(folder_path)?;
 
-    // Debug: print the current AppConfig
-    // eprintln!("DEBUG: AppConfig {{");
-    // eprintln!("  folder: {:?}", folder_path);
-    // eprintln!("  name: {:?}", icon_alias);
-    // eprintln!("  icon: {:?}", config.icon);
-    // eprintln!("  filename: {:?}", config.filename);
-    // eprintln!("  output_line_template: {:?}", config.output_line_template);
-    // eprintln!("  preset: {:?}", config.preset);
-    // eprintln!("}}");
+    if matches!(effective_preset, Preset::Flutter) {
+        return run_app_flutter(config, raw_alias, collection_hint).await;
+    }
 
-    let effective_preset = config.preset.clone().unwrap_or(Preset::Normal);
+    let icon_alias = raw_alias.clone();
 
     // Determine SVG content and filename stem based on a valid combination of arguments.
     let (svg_content, file_stem_str, ext, output_line_template) = match (
@@ -413,7 +470,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.filename.as_ref(),
                 ".svg",
                 config.icon.as_ref(),
-                &config.name,
+                &icon_alias,
             );
             Ok::<(String, String, &'static str, String), anyhow::Error>((
                 content,
@@ -426,18 +483,15 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // Case 3: React
         (icon_source, Preset::React) => {
             let content = _icon_source_to_svg(icon_source, Some("{...props}"), true).await?;
-
-            // Wrap the SVG in a React component template
             let content = format!(
                 "import type {{ SVGProps }} from 'react';\n\nexport default function Icon(props: SVGProps<SVGSVGElement>) {{\n  return (\n{}\n  );\n}}",
                 content
             );
-
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
                 ".tsx",
                 config.icon.as_ref(),
-                &config.name,
+                &icon_alias,
             );
             Ok::<(String, String, &'static str, String), anyhow::Error>((
                 content,
@@ -450,18 +504,15 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // Case 4: Svelte
         (icon_source, Preset::Svelte) => {
             let content = _icon_source_to_svg(icon_source, Some("{...props}"), false).await?;
-
-            // Wrap the SVG in a Svelte component template
             let content = format!(
                 "<script lang=\"ts\">\n  import type {{ SVGAttributes }} from 'svelte/elements';\n\n  let {{ ...props }}: SVGAttributes<SVGSVGElement> = $props();\n</script>\n\n{}",
                 content
             );
-
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
                 ".svelte",
                 config.icon.as_ref(),
-                &config.name,
+                &icon_alias,
             );
             Ok::<(String, String, &'static str, String), anyhow::Error>((
                 content,
@@ -474,18 +525,15 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // Case 5: Solid
         (icon_source, Preset::Solid) => {
             let content = _icon_source_to_svg(icon_source, Some("{...props}"), true).await?;
-
-            // Wrap the SVG in a Solid component template
             let content = format!(
                 "import {{ type JSX }} from 'solid-js';\n\nexport default function Icon(props: JSX.SvgSVGAttributes<SVGSVGElement>) {{\n  return ({});\n}}",
                 content
             );
-
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
                 ".tsx",
                 config.icon.as_ref(),
-                &config.name,
+                &icon_alias,
             );
             Ok::<(String, String, &'static str, String), anyhow::Error>((
                 content,
@@ -498,18 +546,15 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // Case 6: Vue
         (icon_source, Preset::Vue) => {
             let content = _icon_source_to_svg(icon_source, Some("v-bind=\"$props\""), true).await?;
-
-            // Wrap the SVG in a Vue component template
             let content = format!(
                 "<template>\n  <template>\n    {}\n  </template>\n</template>\n\n<script setup lang=\"ts\">\nimport type {{ SVGAttributes }} from 'vue'\n\ndefineProps<SVGAttributes>()\n</script>",
                 content
             );
-
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
                 ".vue",
                 config.icon.as_ref(),
-                &config.name,
+                &icon_alias,
             );
             Ok::<(String, String, &'static str, String), anyhow::Error>((
                 content,
@@ -522,12 +567,11 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // Case 7: Only an icon is provided in `normal` mode.
         (Some(icon_source), Preset::Normal) => {
             let content = _icon_source_to_svg(&Some(icon_source.clone()), None, false).await?;
-
             let (file_stem, ext) = _make_svg_filename(
                 config.filename.as_ref(),
                 ".svg",
                 config.icon.as_ref(),
-                &config.name,
+                &icon_alias,
             );
             Ok((content, file_stem, ext, config.output_line_template.clone()))
         }
@@ -536,6 +580,9 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         (None, Preset::Normal) => {
             anyhow::bail!("The --icon argument is required when --preset is normal.");
         }
+
+        // Case 9: Flutter — handled above via run_app_flutter, unreachable here.
+        (_, Preset::Flutter) => unreachable!("Flutter handled in run_app_flutter"),
     }?;
 
     // The rest of the function can now safely assume it has the content and a filename stem.
@@ -545,7 +592,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     // Update or create index.ts
     let index_ts_path = folder_path.join("index.ts");
     let rendered_export_statement = output_line_template
-        .replace("%name%", icon_alias)
+        .replace("%name%", &icon_alias)
         .replace("%icon%", &file_stem_str)
         .replace("%ext%", ext);
     let export_line = format!("{}\n", rendered_export_statement);
@@ -562,7 +609,6 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         );
     }
 
-    // Save the SVG content to the file
     fs::write(&svg_file_path, &svg_content)?;
     println!("Successfully saved icon to: {}", svg_file_path.display());
 
@@ -591,6 +637,96 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         let mut file = fs::File::create(&index_ts_path)?;
         file.write_all(export_line.as_bytes())?;
         println!("Created and wrote export to: {}", index_ts_path.display());
+    }
+
+    Ok(())
+}
+
+/// Flutter preset add flow: write the SVG + regenerate (or create) the Dart
+/// barrel file. iconmate owns the barrel entirely.
+async fn run_app_flutter(
+    config: AppConfig,
+    raw_alias: String,
+    collection_hint: Option<String>,
+) -> anyhow::Result<()> {
+    let folder_path = &config.folder;
+    let folder_str = folder_path.to_string_lossy().replace('\\', "/");
+
+    let barrel_path: PathBuf = config
+        .flutter_barrel_file
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(crate::flutter::DEFAULT_FLUTTER_BARREL_FILE));
+    let barrel_class = config
+        .flutter_barrel_class
+        .clone()
+        .unwrap_or_else(|| crate::flutter::DEFAULT_FLUTTER_BARREL_CLASS.to_string());
+
+    // Resolve SVG content from the icon source. `--icon` is required.
+    let Some(icon_source) = config.icon.as_ref() else {
+        anyhow::bail!("The --icon argument is required for --preset flutter.");
+    };
+    let svg_content =
+        _icon_source_to_svg(&Some(icon_source.clone()), None, false).await?;
+
+    // Resolve SVG filename on disk. Prefer --filename, otherwise derive a
+    // snake_case-ish stem from the icon source or name.
+    let (file_stem, ext) = _make_svg_filename(
+        config.filename.as_ref(),
+        ".svg",
+        config.icon.as_ref(),
+        &raw_alias,
+    );
+    let file_name = format!("{}{}", file_stem, ext);
+    let svg_file_path = folder_path.join(&file_name);
+
+    if svg_file_path.exists() {
+        anyhow::bail!(
+            "Target icon file already exists: {}. Choose a different --filename.",
+            svg_file_path.display()
+        );
+    }
+
+    // Parse the existing barrel (or start empty) and resolve a unique Dart
+    // identifier with the collision fallback.
+    let existing_entries = crate::flutter::read_barrel_entries(&barrel_path)?;
+    let fallback_name = collection_hint
+        .as_deref()
+        .map(|prefix| format!("{}{}", prefix, raw_alias));
+    let identifier = crate::flutter::resolve_unique_identifier(
+        &existing_entries,
+        &raw_alias,
+        fallback_name.as_deref(),
+    )?;
+
+    let asset_path = crate::flutter::asset_path_for(&folder_str, &file_name);
+    let updated = crate::flutter::add_entry(&existing_entries, &identifier, &asset_path)?;
+
+    // Write the SVG first, then the barrel. If the barrel write fails we roll
+    // back the SVG so partial state doesn't leak.
+    fs::write(&svg_file_path, &svg_content)?;
+    println!("Successfully saved icon to: {}", svg_file_path.display());
+
+    if let Err(err) = crate::flutter::write_barrel(&barrel_path, &barrel_class, &updated) {
+        let _ = fs::remove_file(&svg_file_path);
+        return Err(err);
+    }
+
+    println!(
+        "Updated barrel at {}: added {}.{}",
+        barrel_path.display(),
+        barrel_class,
+        identifier
+    );
+
+    if let Some(project) = crate::flutter::detect_flutter_project(
+        &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    ) {
+        println!(
+            "Flutter project detected ({}). Make sure `{}` is registered under `flutter: assets:` in pubspec.yaml at {}.",
+            project.package_name.as_deref().unwrap_or("unknown"),
+            folder_str,
+            project.root.display()
+        );
     }
 
     Ok(())
@@ -718,23 +854,25 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
         .and_then(|icon_source| default_name_and_filename_from_icon_source(icon_source))
         .map(|(name, _)| name);
 
-    let name = match &cli.name {
+    let name: Option<String> = match &cli.name {
         Some(n) => {
             println!("> ✧ Name: {}", n);
-            n.clone()
+            Some(n.clone())
         }
         None => {
-            let mut prompt = Text::new("✧ Name (required, e.g., Heart)")
-                .with_render_config(render_config)
-                .with_validator(inquire::validator::ValueRequiredValidator::new(
-                    "Name is required.",
-                ));
+            let mut prompt = Text::new("✧ Name (leave empty to auto-infer from icon)")
+                .with_render_config(render_config);
 
             if let Some(default_name) = inferred_name.as_deref() {
                 prompt = prompt.with_default(default_name);
             }
 
-            prompt.prompt()?
+            let raw = prompt.prompt()?;
+            if raw.trim().is_empty() {
+                None
+            } else {
+                Some(raw)
+            }
         }
     };
 
@@ -748,6 +886,8 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
             .clone()
             .unwrap_or_else(|| config::DEFAULT_OUTPUT_LINE_TEMPLATE.to_string()),
         preset,
+        flutter_barrel_file: cli.flutter_barrel_file.clone(),
+        flutter_barrel_class: cli.flutter_barrel_class.clone(),
     };
     run_app(config).await
 }
@@ -828,11 +968,34 @@ fn resolve_list_folder<'a>(
 }
 
 fn run_list_mode(cli: &CliArgs, command_folder: Option<&PathBuf>) -> anyhow::Result<()> {
-    let folder = resolve_list_folder(cli, command_folder)
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from(config::DEFAULT_FOLDER));
-    let index_ts_path = folder.join("index.ts");
+    let resolved = config::resolve_tui_config(
+        resolve_list_folder(cli, command_folder),
+        cli.preset.as_ref(),
+        cli.output_line_template.as_ref(),
+    )?;
 
+    let folder = PathBuf::from(&resolved.folder);
+
+    if resolved.preset == "flutter" {
+        let icons = crate::utils::get_existing_icons_for_preset(
+            folder.to_string_lossy().as_ref(),
+            &resolved.preset,
+            resolved.flutter_barrel_file.as_deref(),
+        )?;
+        if icons.is_empty() {
+            let barrel = resolved
+                .flutter_barrel_file
+                .unwrap_or_else(|| crate::flutter::DEFAULT_FLUTTER_BARREL_FILE.to_string());
+            println!("No icons found in {}", barrel);
+            return Ok(());
+        }
+        for icon in icons {
+            println!("{}\t{}", icon.name, icon.file_path);
+        }
+        return Ok(());
+    }
+
+    let index_ts_path = folder.join("index.ts");
     if !index_ts_path.exists() {
         println!("No icons found in {}", index_ts_path.display());
         return Ok(());
@@ -857,6 +1020,90 @@ fn resolve_delete_folder<'a>(
     command_folder: Option<&'a PathBuf>,
 ) -> Option<&'a PathBuf> {
     command_folder.or(cli.folder.as_ref())
+}
+
+fn run_delete_flutter(
+    folder: &Path,
+    resolved: &config::ResolvedTuiConfig,
+    names: &[String],
+    filenames: &[String],
+) -> anyhow::Result<()> {
+    let barrel_path: PathBuf = resolved
+        .flutter_barrel_file
+        .clone()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::flutter::DEFAULT_FLUTTER_BARREL_FILE));
+    let class = resolved
+        .flutter_barrel_class
+        .clone()
+        .unwrap_or_else(|| crate::flutter::DEFAULT_FLUTTER_BARREL_CLASS.to_string());
+
+    if !barrel_path.exists() {
+        anyhow::bail!("No barrel file found at {}", barrel_path.display());
+    }
+
+    let entries = crate::flutter::read_barrel_entries(&barrel_path)?;
+    let folder_str = folder.to_string_lossy().replace('\\', "/");
+    let mut missing: Vec<String> = Vec::new();
+    let mut to_remove: Vec<crate::flutter::DartBarrelEntry> = Vec::new();
+
+    for name in names {
+        match entries.iter().find(|e| &e.identifier == name) {
+            Some(entry) => to_remove.push(entry.clone()),
+            None => missing.push(format!("name={name}")),
+        }
+    }
+    for filename in filenames {
+        let needle_a = crate::flutter::asset_path_for(&folder_str, filename);
+        let needle_b = filename.clone();
+        match entries
+            .iter()
+            .find(|e| e.asset_path == needle_a || e.asset_path == needle_b)
+        {
+            Some(entry) => to_remove.push(entry.clone()),
+            None => missing.push(format!("filename={filename}")),
+        }
+    }
+
+    if !missing.is_empty() {
+        anyhow::bail!("No matching icon(s) found for: {}", missing.join(", "));
+    }
+
+    to_remove.sort_by(|a, b| a.identifier.cmp(&b.identifier));
+    to_remove.dedup_by(|a, b| a.identifier == b.identifier);
+
+    let mut current = entries;
+    for entry in &to_remove {
+        let (updated, _) = crate::flutter::remove_entry_by_path(&current, &entry.asset_path);
+        current = updated;
+
+        // Also delete the SVG on disk if it resolves inside the configured folder.
+        let asset_norm = entry.asset_path.replace('\\', "/");
+        let rel = if !folder_str.is_empty()
+            && asset_norm.starts_with(&format!("{folder_str}/"))
+        {
+            asset_norm[folder_str.len() + 1..].to_string()
+        } else {
+            asset_norm
+        };
+        let svg_abs = folder.join(&rel);
+        if svg_abs.exists() {
+            if let Err(e) = fs::remove_file(&svg_abs) {
+                eprintln!("Failed to delete {}: {}", svg_abs.display(), e);
+            } else {
+                eprintln!("Deleted: {}", svg_abs.display());
+            }
+        }
+    }
+
+    crate::flutter::write_barrel(&barrel_path, &class, &current)?;
+    eprintln!(
+        "Updated barrel at {} ({} entr{} removed).",
+        barrel_path.display(),
+        to_remove.len(),
+        if to_remove.len() == 1 { "y" } else { "ies" }
+    );
+    Ok(())
 }
 
 fn apply_deletions(folder: &Path, index_ts_path: &Path, to_delete: &[IconEntry]) -> anyhow::Result<()> {
@@ -892,9 +1139,16 @@ fn run_delete_non_interactive(
         );
     }
 
-    let folder = resolve_delete_folder(cli, command_folder)
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from(config::DEFAULT_FOLDER));
+    let resolved = config::resolve_tui_config(
+        resolve_delete_folder(cli, command_folder),
+        cli.preset.as_ref(),
+        cli.output_line_template.as_ref(),
+    )?;
+    let folder = PathBuf::from(&resolved.folder);
+
+    if resolved.preset == "flutter" {
+        return run_delete_flutter(&folder, &resolved, names, filenames);
+    }
 
     let index_ts_path = folder.join("index.ts");
     if !index_ts_path.exists() {
@@ -970,6 +1224,20 @@ async fn run_delete_prompt_mode(
             .prompt()?,
     };
     let folder = PathBuf::from(folder_raw);
+
+    // Detect Flutter projects up-front; prompt-mode delete only supports
+    // the JS preset path. Flutter users should use the TUI or pass
+    // --name/--filename for non-interactive delete.
+    let resolved = config::resolve_tui_config(
+        Some(&folder),
+        cli.preset.as_ref(),
+        cli.output_line_template.as_ref(),
+    )?;
+    if resolved.preset == "flutter" {
+        anyhow::bail!(
+            "Interactive delete for the Flutter preset isn't supported here. Use the TUI (just run `iconmate`) or pass --name / --filename with --yes."
+        );
+    }
 
     // Step 2: Check if folder is valid and has index.ts
     let index_ts_path = folder.join("index.ts");
@@ -1048,6 +1316,8 @@ async fn main() -> anyhow::Result<()> {
             filename,
             output_line_template,
             preset,
+            flutter_barrel_file,
+            flutter_barrel_class,
         }) => {
             let config = AppConfig {
                 folder,
@@ -1056,6 +1326,8 @@ async fn main() -> anyhow::Result<()> {
                 filename,
                 output_line_template,
                 preset,
+                flutter_barrel_file,
+                flutter_barrel_class,
             };
             run_app(config).await
         }
@@ -1096,6 +1368,8 @@ async fn main() -> anyhow::Result<()> {
                 svg_viewer_cmd_source: resolved.svg_viewer_cmd_source,
                 global_config_loaded: resolved.global_config_loaded,
                 project_config_loaded: resolved.project_config_loaded,
+                flutter_barrel_file: resolved.flutter_barrel_file,
+                flutter_barrel_class: resolved.flutter_barrel_class,
             };
             tui::run(config).await
         }
@@ -1164,6 +1438,8 @@ mod tests {
             icon: None,
             filename: None,
             output_line_template: None,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         };
 
         let resolved = resolve_delete_folder(&cli, Some(&command_folder));
@@ -1181,6 +1457,8 @@ mod tests {
             icon: None,
             filename: None,
             output_line_template: None,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         };
 
         let resolved = resolve_delete_folder(&cli, None);
@@ -1199,6 +1477,8 @@ mod tests {
             icon: None,
             filename: None,
             output_line_template: None,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         };
 
         let resolved = resolve_list_folder(&cli, Some(&command_folder));
@@ -1216,6 +1496,8 @@ mod tests {
             icon: None,
             filename: None,
             output_line_template: None,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         };
 
         let resolved = resolve_list_folder(&cli, None);

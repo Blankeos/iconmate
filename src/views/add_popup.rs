@@ -17,6 +17,32 @@ const FILENAME_FIELD_IDX: usize = 2;
 const NAME_FIELD_IDX: usize = 3;
 const DEFAULT_OUTPUT_LINE_TEMPLATE: &str = "export { default as Icon%name% } from './%icon%%ext%';";
 
+/// Preview the call-site shape the user will see once this icon is added.
+/// For Flutter, show `AppIcons.chevronRight` using the configured class and
+/// the name normalized to lowerCamelCase. For every other preset, keep the
+/// existing `<Icon{} />` hint (the JS presets all consume it via an `Icon`
+/// prefix in `output_line_template`).
+fn usage_hint_for_preset(
+    preset: Option<&Preset>,
+    raw_name: &str,
+    flutter_barrel_class: Option<&str>,
+) -> String {
+    if matches!(preset, Some(Preset::Flutter)) {
+        let class = flutter_barrel_class.unwrap_or(crate::flutter::DEFAULT_FLUTTER_BARREL_CLASS);
+        if raw_name.trim().is_empty() {
+            return format!("usage: {}.{{}}", class);
+        }
+        match crate::flutter::sanitize_identifier(raw_name) {
+            Ok(id) => format!("usage: {}.{}", class, id),
+            Err(_) => format!("usage: {}.{{}}", class),
+        }
+    } else if raw_name.trim().is_empty() {
+        String::from("usage: <Icon{} />")
+    } else {
+        format!("usage: <Icon{} />", raw_name)
+    }
+}
+
 #[derive(Debug)]
 pub struct AddPopupState {
     // Saved values
@@ -373,6 +399,15 @@ impl App {
             command.arg("--filename").arg(filename);
         }
 
+        if matches!(preset, Preset::Flutter) {
+            if let Some(barrel_file) = self.config.flutter_barrel_file.as_deref() {
+                command.arg("--flutter-barrel-file").arg(barrel_file);
+            }
+            if let Some(barrel_class) = self.config.flutter_barrel_class.as_deref() {
+                command.arg("--flutter-barrel-class").arg(barrel_class);
+            }
+        }
+
         let output = command.output().map_err(|error| error.to_string())?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -570,17 +605,18 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
 
         let name_value = state.inputs[NAME_FIELD_IDX].lines().join("");
         let (name_bg, name_title) = field_theme(state.current_input == NAME_FIELD_IDX);
+        let usage_hint = usage_hint_for_preset(
+            state.preset.as_ref(),
+            &name_value,
+            app.config.flutter_barrel_class.as_deref(),
+        );
         let name_block = Block::default()
             .title(format!("{}", labels[NAME_FIELD_IDX]))
             .title_style(Style::default().fg(name_title).add_modifier(Modifier::BOLD))
             .title(
-                Line::from(if name_value.is_empty() {
-                    String::from("usage: <Icon{} />")
-                } else {
-                    format!("usage: <Icon{} />", name_value)
-                })
-                .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
-                .alignment(Alignment::Right),
+                Line::from(usage_hint)
+                    .style(Style::default().fg(crate::views::theme::SUBTLE_TEXT))
+                    .alignment(Alignment::Right),
             )
             .style(Style::default().bg(name_bg).fg(crate::views::theme::TEXT));
         state.inputs[NAME_FIELD_IDX].set_block(name_block);
@@ -623,6 +659,8 @@ mod tests {
             svg_viewer_cmd_source: "test".to_string(),
             global_config_loaded: false,
             project_config_loaded: false,
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
         }
     }
 

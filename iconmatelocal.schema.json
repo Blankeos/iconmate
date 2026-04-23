@@ -21,16 +21,18 @@
         "svelte",
         "solid",
         "vue",
-        "emptysvg"
+        "emptysvg",
+        "flutter"
       ],
       "title": "Preset",
-      "description": "Icon output preset. 'normal' means plain SVG mode. Other values are framework or emptysvg presets.",
+      "description": "Icon output preset. 'normal' means plain SVG mode. 'flutter' writes SVGs + a Dart barrel (lib/icons.dart by default). Others are framework presets or an emptysvg placeholder.",
       "default": "normal",
       "examples": [
         "normal",
         "react",
         "solid",
-        "emptysvg"
+        "emptysvg",
+        "flutter"
       ]
     },
     "output_line_template": {
@@ -52,6 +54,26 @@
         "zed %filename%",
         "code %filename%",
         "open %filename%"
+      ]
+    },
+    "flutter_barrel_file": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Flutter Barrel File",
+      "description": "Project-root-relative path to the generated Dart barrel when preset='flutter'. Default: `lib/icons.dart`.",
+      "examples": [
+        "lib/icons.dart",
+        "lib/gen/icons.dart"
+      ]
+    },
+    "flutter_barrel_class": {
+      "type": "string",
+      "minLength": 1,
+      "title": "Flutter Barrel Class",
+      "description": "Dart class name emitted into the barrel when preset='flutter'. Default: `AppIcons`.",
+      "examples": [
+        "AppIcons",
+        "Assets"
       ]
     }
   },

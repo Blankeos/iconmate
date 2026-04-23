@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /tmp/iconmate_flutter_demo)",
+      "Read(//tmp/**)",
+      "Bash(mkdir -p /tmp/iconmate_flutter_autodetect/lib)"
+    ]
+  }
+}

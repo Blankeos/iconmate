@@ -29,6 +29,10 @@ pub enum Preset {
     /// Vue
     #[value(name = "vue")]
     Vue,
+
+    /// Flutter (Dart barrel)
+    #[value(name = "flutter")]
+    Flutter,
 }
 
 impl Preset {
@@ -40,6 +44,20 @@ impl Preset {
             Preset::Svelte => "svelte",
             Preset::Solid => "solid",
             Preset::Vue => "vue",
+            Preset::Flutter => "flutter",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "normal" => Some(Preset::Normal),
+            "emptysvg" => Some(Preset::EmptySvg),
+            "react" => Some(Preset::React),
+            "svelte" => Some(Preset::Svelte),
+            "solid" => Some(Preset::Solid),
+            "vue" => Some(Preset::Vue),
+            "flutter" => Some(Preset::Flutter),
+            _ => None,
         }
     }
 }
@@ -81,6 +99,10 @@ pub const PRESETS_OPTIONS: &[PresetOption] = &[
     PresetOption {
         preset: Preset::Vue,
         description: "Outputs a Vue component (.vue)",
+    },
+    PresetOption {
+        preset: Preset::Flutter,
+        description: "Outputs SVGs + a Dart barrel (lib/icons.dart)",
     },
 ];
 
@@ -382,6 +404,7 @@ pub fn filename_from_preset(file_name: Option<String>, preset: Option<Preset>) -
             Preset::Svelte => "svelte",
             Preset::Solid => "tsx",
             Preset::Vue => "vue",
+            Preset::Flutter => "svg",
         };
 
         if let Some(name) = file_name {
@@ -400,6 +423,28 @@ pub fn filename_from_preset(file_name: Option<String>, preset: Option<Preset>) -
     }
 
     "".to_string()
+}
+
+/// Preset-aware dispatcher. For `flutter`, parses the Dart barrel file
+/// (defaults to `lib/icons.dart` if `flutter_barrel_path` is None). For every
+/// other preset, parses `<folder>/index.ts`.
+pub fn get_existing_icons_for_preset(
+    folder_path: &str,
+    preset: &str,
+    flutter_barrel_path: Option<&str>,
+) -> anyhow::Result<Vec<IconEntry>> {
+    if preset == "flutter" {
+        use std::path::PathBuf;
+        let barrel = flutter_barrel_path
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(crate::flutter::DEFAULT_FLUTTER_BARREL_FILE));
+        let entries = crate::flutter::read_barrel_entries(&barrel)?;
+        return Ok(crate::flutter::barrel_entries_to_icon_entries(
+            &entries,
+            folder_path,
+        ));
+    }
+    get_existing_icons(folder_path)
 }
 
 /// Util: Reads a file line-by-line and extracts every icon entry that matches

@@ -51,6 +51,8 @@ pub struct AppConfig {
     pub svg_viewer_cmd_source: String,
     pub global_config_loaded: bool,
     pub project_config_loaded: bool,
+    pub flutter_barrel_file: Option<String>,
+    pub flutter_barrel_class: Option<String>,
 }
 
 pub struct App {
@@ -109,8 +111,13 @@ impl App {
     }
 
     pub fn init_icons(&mut self) {
-        // Try to read the current project's export file
-        self.items = crate::utils::get_existing_icons(&self.config.folder).unwrap_or_default();
+        // Try to read the current project's export file (or Dart barrel for Flutter).
+        self.items = crate::utils::get_existing_icons_for_preset(
+            &self.config.folder,
+            &self.config.preset,
+            self.config.flutter_barrel_file.as_deref(),
+        )
+        .unwrap_or_default();
         self.filtered_items = self.items.clone();
     }
 
