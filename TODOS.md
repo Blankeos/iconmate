@@ -18,18 +18,21 @@
 ## Next high-priority slice
 
 - [x] Rename flow UX
+
   - [x] Add a lightweight rename action that only renames the file path export target.
   - [x] Keep icon component alias unchanged and show a warning for alias rename in-editor.
   - [x] Add explicit messaging to recommend IDE rename refactor for symbol-level rename.
   - [x] Acceptance: rename updates file + `index.ts` export path safely.
 
 - [x] Global system prefs (`~/.config/iconmate.jsonc` or `~/iconmate.jsonc`)
+
   - [x] Confirm final search paths and precedence for macOS/Linux/Windows.
   - [x] Implement robust loader with unknown-key warnings (non-fatal).
   - [x] Add schema validation and friendly error output with file path context.
   - [x] Acceptance: startup logs/source reflect applied global values.
 
 - [x] `o` key to open selected icon
+
   - [x] Add keybind in main list and shared opener support for Iconify search list integration.
   - [x] Resolve viewer command from local -> global -> OS default.
   - [x] Add `%filename%` token substitution and command escaping behavior.
@@ -44,11 +47,13 @@
 ## Add-flow product direction
 
 - [x] ~During add: allow icon discovery using Iconify API inside TUI~
+
   - Prototype inline query input + paginated result list.
   - Validate whether this beats copy/paste from icones.js.org.
   - Decide final UX based on keystroke count and speed.
 
 - [x] Dedicated icon search interface (TUI)
+
   - [x] Launch from Home (`i`) instead of starting inside Add popup.
   - [x] Build collection picker + icon view with `Tab` switching and Up/Down navigation.
   - [x] Use `/collections` for collections and local client-side collection filtering.
@@ -72,6 +77,7 @@
 - [x] Non-interactive delete mode
 - [x] Flutter compatibility (`--preset flutter`, see `_docs/flutter-preset-plan.md`)
 - [x] List scroll behavior better:
+
   - [x] Keyboard
     - Pressing down, Only start scrolling down when selected/cursor is on the last viewable element (I think current behavior).
     - Pressing up, Only start scrolling up when the selected/cursor is already on the first viewable element. Currently the behavior is not like this. It changes the current selection and scrolls too (even if the item is still the last item).
@@ -81,3 +87,7 @@
 
 - [ ] Formatting aware barrel files i.e. "./"; or "./" or './' or './'; or "./something.tsx" (for --react or --solid, etc stuff, if it's allowed in tsconfig), should be smart enough to replicate that formatting in js files.
 - [x] The iconmate sync (CLI + read-only TUI dialog; see `_docs/iconmate-sync-plan.md`)
+
+- [ ] I noticed for flutter projects.. Doing `iconmate add` doesn't add it to the dart file so when I do `iconmate sync` I still get 'Would add records'
+
+- [x] file naming defaults changed from `:` to `-` for better compatibility with most filesystems.

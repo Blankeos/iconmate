@@ -179,6 +179,10 @@ fn to_pascal_case(input: &str) -> String {
         .collect::<String>()
 }
 
+fn safe_default_filename_from_iconify_name(iconify_name: &str) -> String {
+    iconify_name.replace(':', "_")
+}
+
 pub fn iconify_name_from_icon_source(icon_source: &str) -> Option<String> {
     let trimmed = icon_source.trim();
     if trimmed.is_empty() || trimmed.trim_start().starts_with("<svg") {
@@ -278,7 +282,9 @@ pub fn default_name_and_filename_from_icon_source(icon_source: &str) -> Option<(
         return None;
     }
 
-    Some((component_name, iconify_name))
+    let filename = safe_default_filename_from_iconify_name(&iconify_name);
+
+    Some((component_name, filename))
 }
 
 /// Util: Determines the type of icon source
@@ -376,10 +382,11 @@ pub fn _make_svg_filename(
     } else if let Some(icon) = icon_source {
         // Only use icon_source if it's a plain iconify name (no http/https, no <svg)
         match _determine_icon_source_type(icon_source) {
-            IconSourceType::IconifyName => {
-                iconify_name_from_icon_source(icon).unwrap_or(icon.clone())
-            }
+            IconSourceType::IconifyName => iconify_name_from_icon_source(icon)
+                .map(|iconify_name| safe_default_filename_from_iconify_name(&iconify_name))
+                .unwrap_or(icon.clone()),
             IconSourceType::Url => iconify_name_from_icon_source(icon)
+                .map(|iconify_name| safe_default_filename_from_iconify_name(&iconify_name))
                 .unwrap_or_else(|| name_from_cli.to_string().to_lowercase()),
             _ => name_from_cli.to_string().to_lowercase(),
         }
@@ -854,9 +861,22 @@ mod tests {
     fn derives_name_and_filename_defaults() {
         assert_eq!(
             default_name_and_filename_from_icon_source(
-                "https://api.iconify.design/mdi:arrow-left.svg"
+                "https://api.iconify.design/lucide:git-branch-plus.svg"
             ),
-            Some(("ArrowLeft".to_string(), "mdi:arrow-left".to_string()))
+            Some((
+                "GitBranchPlus".to_string(),
+                "lucide_git-branch-plus".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn makes_safe_default_filename_for_iconify_names() {
+        let icon = "lucide:check".to_string();
+
+        assert_eq!(
+            _make_svg_filename(None, ".tsx", Some(&icon), "Check"),
+            ("lucide_check".to_string(), ".tsx")
         );
     }
 

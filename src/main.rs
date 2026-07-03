@@ -439,7 +439,7 @@ fn resolve_icon_alias(
         anyhow::bail!("--name is required when no icon source is provided.");
     };
 
-    let Some((default_name, iconify)) =
+    let Some((default_name, _default_filename)) =
         crate::utils::default_name_and_filename_from_icon_source(icon)
     else {
         anyhow::bail!(
@@ -447,9 +447,8 @@ fn resolve_icon_alias(
             icon
         );
     };
-    let collection = iconify
-        .split_once(':')
-        .map(|(p, _)| p.to_string());
+    let collection = crate::utils::iconify_name_from_icon_source(icon)
+        .and_then(|iconify| iconify.split_once(':').map(|(p, _)| p.to_string()));
     Ok((default_name, collection))
 }
 
