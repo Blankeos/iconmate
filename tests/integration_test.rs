@@ -37,16 +37,16 @@ fn test_add_command_creates_folder_and_files() {
 
     // Verify the files exist
     let index_file = test_folder.join("index.ts");
-    let svg_file = test_folder.join("heroicons:heart.svg");
+    let svg_file = test_folder.join("heroicons_heart.svg");
 
     assert!(index_file.exists(), "index.ts should be created");
-    assert!(svg_file.exists(), "heroicons:heart.svg should be created");
+    assert!(svg_file.exists(), "heroicons_heart.svg should be created");
 
     // Verify the content of index.ts
     let index_content = std::fs::read_to_string(&index_file).expect("Failed to read index.ts");
 
     assert!(
-        index_content.contains("export { default as IconHeart } from './heroicons:heart.svg';"),
+        index_content.contains("export { default as IconHeart } from './heroicons_heart.svg';"),
         "index.ts should contain the correct export statement"
     );
 
@@ -109,7 +109,7 @@ fn test_add_command_with_existing_folder() {
         "index.ts should still contain the existing export"
     );
     assert!(
-        index_content.contains("export { default as IconHeart } from './heroicons:heart.svg';"),
+        index_content.contains("export { default as IconHeart } from './heroicons_heart.svg';"),
         "index.ts should contain the new export"
     );
 }
@@ -435,8 +435,8 @@ fn test_add_command_preset_normal_with_icon() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let svg_file = test_folder.join("heroicons:heart.svg");
-    assert!(svg_file.exists(), "heroicons:heart.svg should be created");
+    let svg_file = test_folder.join("heroicons_heart.svg");
+    assert!(svg_file.exists(), "heroicons_heart.svg should be created");
 }
 
 #[test]
@@ -601,12 +601,72 @@ fn test_flutter_preset_add_creates_barrel_and_svg() {
         "barrel has heart entry"
     );
     assert!(
-        contents.contains("heroicons:heart.svg"),
+        contents.contains("heroicons_heart.svg"),
         "barrel references the svg file"
     );
 
-    let svg_file = icons_folder.join("heroicons:heart.svg");
+    let svg_file = icons_folder.join("heroicons_heart.svg");
     assert!(svg_file.exists(), "SVG file should be written");
+}
+
+#[test]
+fn test_flutter_project_add_autodetects_and_updates_dart_barrel() {
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let icons_folder = temp_dir.path().join("assets/icons");
+    let barrel_path = temp_dir.path().join("lib/icons.dart");
+    let binary_path = env!("CARGO_BIN_EXE_iconmate");
+
+    std::fs::write(
+        temp_dir.path().join("pubspec.yaml"),
+        "name: repro_app\nversion: 0.1.0\n\nflutter:\n  uses-material-design: true\n",
+    )
+    .expect("write pubspec");
+
+    let output = Command::new(binary_path)
+        .args([
+            "add",
+            "--folder",
+            icons_folder.to_str().unwrap(),
+            "--name",
+            "Heart",
+            "--icon",
+            r#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#,
+        ])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "Flutter autodetected add should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(barrel_path.exists(), "lib/icons.dart should be created");
+    assert!(
+        !icons_folder.join("index.ts").exists(),
+        "Flutter add should not create a JS index.ts"
+    );
+
+    let contents = std::fs::read_to_string(&barrel_path).expect("read barrel");
+    assert!(contents.contains("static const String heart"));
+    assert!(contents.contains("assets/icons/heart.svg"));
+
+    let sync = Command::new(binary_path)
+        .args(["sync", "--folder", icons_folder.to_str().unwrap()])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute sync");
+
+    assert!(
+        sync.status.success(),
+        "sync should succeed: stderr={}",
+        String::from_utf8_lossy(&sync.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&sync.stdout);
+    assert!(
+        stdout.contains("Clean — no drift."),
+        "sync should be clean after add: got {stdout}"
+    );
 }
 
 #[test]

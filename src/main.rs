@@ -1418,15 +1418,19 @@ async fn main() -> anyhow::Result<()> {
             flutter_barrel_file,
             flutter_barrel_class,
         }) => {
+            let resolved = config::resolve_tui_config(Some(&folder), preset.as_ref(), None)?;
             let config = AppConfig {
                 folder,
                 icon,
                 name,
                 filename,
                 output_line_template,
-                preset,
-                flutter_barrel_file,
-                flutter_barrel_class,
+                preset: Some(Preset::from_str(&resolved.preset).ok_or_else(|| {
+                    anyhow::anyhow!("Invalid resolved preset '{}'.", resolved.preset)
+                })?),
+                flutter_barrel_file: flutter_barrel_file
+                    .or_else(|| resolved.flutter_barrel_file.map(PathBuf::from)),
+                flutter_barrel_class: flutter_barrel_class.or(resolved.flutter_barrel_class),
             };
             run_app(config).await
         }

@@ -88,6 +88,6 @@
 - [ ] Formatting aware barrel files i.e. "./"; or "./" or './' or './'; or "./something.tsx" (for --react or --solid, etc stuff, if it's allowed in tsconfig), should be smart enough to replicate that formatting in js files.
 - [x] The iconmate sync (CLI + read-only TUI dialog; see `_docs/iconmate-sync-plan.md`)
 
-- [ ] I noticed for flutter projects.. Doing `iconmate add` doesn't add it to the dart file so when I do `iconmate sync` I still get 'Would add records'
+- [x] I noticed for flutter projects.. Doing `iconmate add` doesn't add it to the dart file so when I do `iconmate sync` I still get 'Would add records'
 
 - [x] file naming defaults changed from `:` to `-` for better compatibility with most filesystems.
