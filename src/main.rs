@@ -13,6 +13,7 @@ use crate::iconify::{IconifyClient, IconifyCollectionResponse, IconifySearchResp
 use crate::utils::{
     _determine_icon_source_type, _icon_source_to_svg, _make_svg_filename, IconEntry,
     IconSourceType, PRESETS_OPTIONS, Preset, default_name_and_filename_from_icon_source,
+    render_js_export_line,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
@@ -47,12 +48,6 @@ struct CliArgs {
     #[arg(long)]
     filename: Option<String>,
 
-    /// Custom template for the export line. Use %name% for the icon alias and %icon% for the filename stem.
-    /// Variables: %icon%, %name%
-    /// Normally for complex usecases where for example you might need url suffixes for imports i.e. `?react`.
-    #[arg(long)]
-    output_line_template: Option<String>,
-
     /// Flutter preset only: path to the Dart barrel file (project-root-relative).
     #[arg(long)]
     flutter_barrel_file: Option<PathBuf>,
@@ -86,15 +81,6 @@ enum Commands {
         /// Optional custom filename for the SVG file (without extension). Defaults to the icon name.
         #[arg(long)]
         filename: Option<String>,
-
-        /// Custom template for the export line. Use %name% for the icon alias and %icon% for the filename stem.
-        /// Variables: %icon%, %name%
-        /// Normally for complex usecases where for example you might need url suffixes for imports i.e. `?react`.
-        #[arg(
-            long,
-            default_value = "export { default as Icon%name% } from './%icon%%ext%';"
-        )]
-        output_line_template: String,
 
         /// Flutter preset only: path to the Dart barrel file (project-root-relative). Default: lib/icons.dart
         #[arg(long)]
@@ -235,7 +221,6 @@ struct AppConfig {
     name: Option<String>,
     icon: Option<String>,
     filename: Option<String>,
-    output_line_template: String,
     preset: Option<Preset>,
     flutter_barrel_file: Option<PathBuf>,
     flutter_barrel_class: Option<String>,
@@ -473,10 +458,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     let icon_alias = raw_alias.clone();
 
     // Determine SVG content and filename stem based on a valid combination of arguments.
-    let (svg_content, file_stem_str, ext, output_line_template) = match (
-        &config.icon,
-        effective_preset,
-    ) {
+    let (svg_content, file_stem_str, ext) = match (&config.icon, effective_preset) {
         // Case 1: Icon is provided AND the preset is EmptySvg. This is the only mutual exclusivity.
         (Some(_), Preset::EmptySvg) => {
             anyhow::bail!(
@@ -493,11 +475,10 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str, String), anyhow::Error>((
+            Ok::<(String, String, &'static str), anyhow::Error>((
                 content,
                 file_stem,
                 ext,
-                config.output_line_template.clone(),
             ))
         }
 
@@ -514,11 +495,10 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str, String), anyhow::Error>((
+            Ok::<(String, String, &'static str), anyhow::Error>((
                 content,
                 file_stem,
                 ext,
-                config.output_line_template.clone(),
             ))
         }
 
@@ -535,11 +515,10 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str, String), anyhow::Error>((
+            Ok::<(String, String, &'static str), anyhow::Error>((
                 content,
                 file_stem,
                 ext,
-                config.output_line_template.clone(),
             ))
         }
 
@@ -556,11 +535,10 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str, String), anyhow::Error>((
+            Ok::<(String, String, &'static str), anyhow::Error>((
                 content,
                 file_stem,
                 ext,
-                config.output_line_template.clone(),
             ))
         }
 
@@ -577,11 +555,10 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str, String), anyhow::Error>((
+            Ok::<(String, String, &'static str), anyhow::Error>((
                 content,
                 file_stem,
                 ext,
-                config.output_line_template.clone(),
             ))
         }
 
@@ -594,7 +571,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok((content, file_stem, ext, config.output_line_template.clone()))
+            Ok((content, file_stem, ext))
         }
 
         // Case 8: Normal mode still requires an icon source.
@@ -612,15 +589,22 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
     // Update or create index.ts
     let index_ts_path = folder_path.join("index.ts");
-    let rendered_export_statement = output_line_template
-        .replace("%name%", &icon_alias)
-        .replace("%icon%", &file_stem_str)
-        .replace("%ext%", ext);
+    let existing_index = if index_ts_path.exists() {
+        Some(fs::read_to_string(&index_ts_path)?)
+    } else {
+        None
+    };
+    let rendered_export_statement = render_js_export_line(
+        existing_index.as_deref(),
+        folder_path,
+        &icon_alias,
+        &file_stem_str,
+        ext,
+    );
     let export_line = format!("{}\n", rendered_export_statement);
 
-    if index_ts_path.exists() {
-        let existing_index = fs::read_to_string(&index_ts_path)?;
-        validate_new_export_conflicts(&existing_index, &rendered_export_statement, &index_ts_path)?;
+    if let Some(existing_index) = existing_index.as_deref() {
+        validate_new_export_conflicts(existing_index, &rendered_export_statement, &index_ts_path)?;
     }
 
     if svg_file_path.exists() {
@@ -902,10 +886,6 @@ async fn run_prompt_mode(cli: &CliArgs) -> anyhow::Result<()> {
         name,
         icon,
         filename,
-        output_line_template: cli
-            .output_line_template
-            .clone()
-            .unwrap_or_else(|| config::DEFAULT_OUTPUT_LINE_TEMPLATE.to_string()),
         preset,
         flutter_barrel_file: cli.flutter_barrel_file.clone(),
         flutter_barrel_class: cli.flutter_barrel_class.clone(),
@@ -992,7 +972,6 @@ fn run_list_mode(cli: &CliArgs, command_folder: Option<&PathBuf>) -> anyhow::Res
     let resolved = config::resolve_tui_config(
         resolve_list_folder(cli, command_folder),
         cli.preset.as_ref(),
-        cli.output_line_template.as_ref(),
     )?;
 
     let folder = PathBuf::from(&resolved.folder);
@@ -1163,7 +1142,6 @@ fn run_delete_non_interactive(
     let resolved = config::resolve_tui_config(
         resolve_delete_folder(cli, command_folder),
         cli.preset.as_ref(),
-        cli.output_line_template.as_ref(),
     )?;
     let folder = PathBuf::from(&resolved.folder);
 
@@ -1252,7 +1230,6 @@ async fn run_delete_prompt_mode(
     let resolved = config::resolve_tui_config(
         Some(&folder),
         cli.preset.as_ref(),
-        cli.output_line_template.as_ref(),
     )?;
     if resolved.preset == "flutter" {
         anyhow::bail!(
@@ -1342,7 +1319,6 @@ fn run_sync_command(
     let resolved = config::resolve_tui_config(
         folder_override,
         cli.preset.as_ref(),
-        cli.output_line_template.as_ref(),
     )?;
     let folder = PathBuf::from(&resolved.folder);
 
@@ -1363,7 +1339,6 @@ fn run_sync_command(
     let ctx = sync::SyncContext {
         folder: &folder,
         preset: &resolved.preset,
-        output_line_template: &resolved.output_line_template,
         flutter_barrel_file,
         flutter_barrel_class: resolved.flutter_barrel_class.as_deref(),
         renames: &rename_map,
@@ -1413,18 +1388,16 @@ async fn main() -> anyhow::Result<()> {
             icon,
             name,
             filename,
-            output_line_template,
             preset,
             flutter_barrel_file,
             flutter_barrel_class,
         }) => {
-            let resolved = config::resolve_tui_config(Some(&folder), preset.as_ref(), None)?;
+            let resolved = config::resolve_tui_config(Some(&folder), preset.as_ref())?;
             let config = AppConfig {
                 folder,
                 icon,
                 name,
                 filename,
-                output_line_template,
                 preset: Some(Preset::from_str(&resolved.preset).ok_or_else(|| {
                     anyhow::anyhow!("Invalid resolved preset '{}'.", resolved.preset)
                 })?),
@@ -1459,7 +1432,6 @@ async fn main() -> anyhow::Result<()> {
             let resolved = config::resolve_tui_config(
                 args.folder.as_ref(),
                 args.preset.as_ref(),
-                args.output_line_template.as_ref(),
             )?;
 
             for warning in &resolved.warnings {
@@ -1472,7 +1444,6 @@ async fn main() -> anyhow::Result<()> {
             let config = app_state::AppConfig {
                 folder: resolved.folder,
                 preset: resolved.preset,
-                template: Some(resolved.output_line_template),
                 svg_viewer_cmd: resolved.svg_viewer_cmd,
                 svg_viewer_cmd_source: resolved.svg_viewer_cmd_source,
                 global_config_loaded: resolved.global_config_loaded,
@@ -1546,7 +1517,6 @@ mod tests {
             name: None,
             icon: None,
             filename: None,
-            output_line_template: None,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
         };
@@ -1565,7 +1535,6 @@ mod tests {
             name: None,
             icon: None,
             filename: None,
-            output_line_template: None,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
         };
@@ -1585,7 +1554,6 @@ mod tests {
             name: None,
             icon: None,
             filename: None,
-            output_line_template: None,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
         };
@@ -1604,7 +1572,6 @@ mod tests {
             name: None,
             icon: None,
             filename: None,
-            output_line_template: None,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
         };

@@ -15,13 +15,11 @@ const PRESET_FIELD_IDX: usize = 0;
 const ICON_FIELD_IDX: usize = 1;
 const FILENAME_FIELD_IDX: usize = 2;
 const NAME_FIELD_IDX: usize = 3;
-const DEFAULT_OUTPUT_LINE_TEMPLATE: &str = "export { default as Icon%name% } from './%icon%%ext%';";
 
 /// Preview the call-site shape the user will see once this icon is added.
 /// For Flutter, show `AppIcons.chevronRight` using the configured class and
 /// the name normalized to lowerCamelCase. For every other preset, keep the
-/// existing `<Icon{} />` hint (the JS presets all consume it via an `Icon`
-/// prefix in `output_line_template`).
+/// existing `<Icon{} />` hint (the JS presets all consume it via an `Icon` prefix).
 fn usage_hint_for_preset(
     preset: Option<&Preset>,
     raw_name: &str,
@@ -382,14 +380,7 @@ impl App {
             .arg("--folder")
             .arg(&self.config.folder)
             .arg("--name")
-            .arg(&name)
-            .arg("--output-line-template")
-            .arg(
-                self.config
-                    .template
-                    .as_deref()
-                    .unwrap_or(DEFAULT_OUTPUT_LINE_TEMPLATE),
-            );
+            .arg(&name);
 
         command.arg("--preset").arg(preset.to_str());
 
@@ -677,7 +668,6 @@ mod tests {
         crate::app_state::AppConfig {
             folder,
             preset: "normal".to_string(),
-            template: None,
             svg_viewer_cmd: None,
             svg_viewer_cmd_source: "test".to_string(),
             global_config_loaded: false,

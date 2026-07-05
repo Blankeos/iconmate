@@ -148,15 +148,6 @@ static const heart = 'assets/icons/redheart.svg';
 
 The identifier/filename mismatch is intentional. Rationale: renaming a Dart identifier means updating every call site across the user's codebase, which the LSP (`Rename Symbol` in VS Code, `Refactor → Rename` in IntelliJ) already does correctly. iconmate has no business AST-rewriting user code. Clean division: **iconmate owns the filesystem, the LSP owns the symbol table.** Document this behavior in the `rename` hint text so the UX is clear.
 
-### 2.13 `output_line_template` interaction
-
-`output_line_template` is meaningless when preset is Flutter (barrel format is fixed). Handling:
-
-- If `output_line_template` is unset or equal to the default string: silently ignored when preset is Flutter.
-- If `output_line_template` is set to a non-default (user-customized) value: **warn once at startup** — "`output_line_template` is ignored for the Flutter preset."
-
-No silent footguns — if they bothered to customize it, they should know it's being dropped.
-
 ### 2.14 First-run barrel creation
 
 - First `iconmate add` in a Flutter project when `lib/icons.dart` (or configured `flutter_barrel_file`) doesn't exist: create it with the generated header + the first entry.

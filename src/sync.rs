@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::flutter;
-use crate::utils::{IconEntry, parse_export_line_ts};
+use crate::utils::{IconEntry, parse_export_line_ts, render_js_export_line};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Addition {
@@ -61,8 +61,6 @@ impl SyncPlan {
 pub struct SyncContext<'a> {
     pub folder: &'a Path,
     pub preset: &'a str,
-    /// JS preset: template like `export { default as Icon%name% } from './%icon%%ext%';`.
-    pub output_line_template: &'a str,
     /// Flutter preset: project-root-relative path to the barrel file.
     pub flutter_barrel_file: Option<&'a Path>,
     pub flutter_barrel_class: Option<&'a str>,
@@ -132,18 +130,16 @@ fn stem_of(filename: &str) -> (&str, &str) {
     }
 }
 
-/// Render a JS export line for a given filename + alias using the template.
+/// Render a JS export line for a given filename + alias.
 /// Returns (rendered_line, parsed_identifier).
 fn render_js_addition(
-    template: &str,
+    folder: &Path,
+    index_contents: Option<&str>,
     filename: &str,
     alias: &str,
 ) -> Option<(String, String)> {
     let (stem, ext) = stem_of(filename);
-    let rendered = template
-        .replace("%name%", alias)
-        .replace("%icon%", stem)
-        .replace("%ext%", ext);
+    let rendered = render_js_export_line(index_contents, folder, alias, stem, ext);
     let entry = parse_export_line_ts(rendered.trim_end_matches(';'))
         .or_else(|| parse_export_line_ts(&rendered))?;
     Some((rendered, entry.name))
@@ -167,8 +163,13 @@ pub fn compute_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
 
 fn compute_js_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
     let barrel_path = ctx.folder.join("index.ts");
-    let mut entries: Vec<IconEntry> = if barrel_path.exists() {
-        let contents = fs::read_to_string(&barrel_path)?;
+    let barrel_contents = if barrel_path.exists() {
+        Some(fs::read_to_string(&barrel_path)?)
+    } else {
+        None
+    };
+
+    let mut entries: Vec<IconEntry> = if let Some(contents) = barrel_contents.as_deref() {
         let mut out = Vec::new();
         for line in contents.lines() {
             for stmt in line.split(';') {
@@ -220,7 +221,7 @@ fn compute_js_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
             continue;
         }
         let Some((rendered, full_name)) =
-            render_js_addition(ctx.output_line_template, filename, &inferred_alias)
+            render_js_addition(ctx.folder, barrel_contents.as_deref(), filename, &inferred_alias)
         else {
             continue;
         };
@@ -602,9 +603,6 @@ mod tests {
         fs::write(path, contents).unwrap();
     }
 
-    const DEFAULT_TEMPLATE: &str =
-        "export { default as Icon%name% } from './%icon%%ext%';";
-
     #[test]
     fn js_clean_when_in_sync() {
         let tmp = TempDir::new().unwrap();
@@ -619,7 +617,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -643,7 +640,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -669,7 +665,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -695,7 +690,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -720,7 +714,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -754,7 +747,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -782,7 +774,6 @@ mod tests {
         let ctx = SyncContext {
             folder,
             preset: "react",
-            output_line_template: DEFAULT_TEMPLATE,
             flutter_barrel_file: None,
             flutter_barrel_class: None,
             renames: &renames,
@@ -824,7 +815,6 @@ mod tests {
         let ctx = SyncContext {
             folder: &folder,
             preset: "flutter",
-            output_line_template: "",
             flutter_barrel_file: Some(&barrel),
             flutter_barrel_class: Some("AppIcons"),
             renames: &renames,
@@ -856,7 +846,6 @@ mod tests {
         let ctx = SyncContext {
             folder: &folder,
             preset: "flutter",
-            output_line_template: "",
             flutter_barrel_file: Some(&barrel),
             flutter_barrel_class: Some("AppIcons"),
             renames: &renames,

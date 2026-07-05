@@ -1,6 +1,8 @@
 use clap::ValueEnum;
 use ratatui::layout::Rect;
 use reqwest::Url;
+use serde_json::Value;
+use std::path::Path;
 
 use crate::iconify::IconifyClient;
 
@@ -125,6 +127,212 @@ pub fn popup_area(area: Rect, max_width: u16, max_height: u16) -> Rect {
 pub struct IconEntry {
     pub name: String,
     pub file_path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TsExtensionPolicy {
+    Allow,
+    Strip,
+}
+
+impl TsExtensionPolicy {
+    pub fn from_tsconfig_near(folder: &Path) -> Self {
+        if tsconfig_allows_importing_ts_extensions(folder) {
+            Self::Allow
+        } else {
+            Self::Strip
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct JsExportStyle {
+    quote: char,
+    semicolon: bool,
+    leading_dot_slash: bool,
+    include_tsx_extension: bool,
+}
+
+impl Default for JsExportStyle {
+    fn default() -> Self {
+        Self {
+            quote: '\'',
+            semicolon: true,
+            leading_dot_slash: true,
+            include_tsx_extension: false,
+        }
+    }
+}
+
+/// Reconcile a rendered JS barrel export with the local barrel style and TS config.
+///
+/// Existing `index.ts` lines win for quote/semicolon/`./` style and, when present,
+/// `.tsx` extension style. `.svg` imports keep their extension. `.tsx` imports keep
+/// the extension only when the nearest tsconfig enables
+/// `compilerOptions.allowImportingTsExtensions`; otherwise `.tsx` is stripped.
+pub fn format_js_export_for_barrel(
+    rendered_line: &str,
+    existing_barrel_contents: Option<&str>,
+    ts_extension_policy: TsExtensionPolicy,
+) -> String {
+    let Some(entry) = parse_export_line_ts(rendered_line) else {
+        return rendered_line.trim_end().to_string();
+    };
+
+    let existing_style = existing_barrel_contents.and_then(detect_js_export_style);
+    let fallback_style = detect_js_export_style(rendered_line);
+    let mut style = existing_style.or(fallback_style).unwrap_or_default();
+
+    style.include_tsx_extension = match ts_extension_policy {
+        TsExtensionPolicy::Strip => false,
+        TsExtensionPolicy::Allow => existing_style
+            .map(|style| style.include_tsx_extension)
+            .or_else(|| fallback_style.map(|style| style.include_tsx_extension))
+            .unwrap_or(false),
+    };
+
+    let import_path = apply_js_import_path_style(&entry.file_path, style);
+    format!(
+        "export {{ default as {} }} from {}{}{}{}",
+        entry.name,
+        style.quote,
+        import_path,
+        style.quote,
+        if style.semicolon { ";" } else { "" }
+    )
+}
+
+pub fn render_js_export_line(
+    index_contents: Option<&str>,
+    folder: &Path,
+    alias: &str,
+    file_stem: &str,
+    ext: &str,
+) -> String {
+    let rendered = format!(
+        "export {{ default as Icon{} }} from './{}{}';",
+        alias, file_stem, ext
+    );
+    format_js_export_for_barrel(
+        &rendered,
+        index_contents,
+        TsExtensionPolicy::from_tsconfig_near(folder),
+    )
+}
+
+fn detect_js_export_style(contents: &str) -> Option<JsExportStyle> {
+    for line in contents.lines() {
+        for stmt in line.split_inclusive(';') {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() || parse_export_line_ts(trimmed).is_none() {
+                continue;
+            }
+
+            let path = raw_export_path(trimmed)?;
+            return Some(JsExportStyle {
+                quote: quote_after_from(trimmed).unwrap_or('\''),
+                semicolon: trimmed.ends_with(';'),
+                leading_dot_slash: path.starts_with("./"),
+                include_tsx_extension: path_before_query_or_hash(path).ends_with(".tsx"),
+            });
+        }
+
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && parse_export_line_ts(trimmed).is_some() {
+            let path = raw_export_path(trimmed)?;
+            return Some(JsExportStyle {
+                quote: quote_after_from(trimmed).unwrap_or('\''),
+                semicolon: trimmed.ends_with(';'),
+                leading_dot_slash: path.starts_with("./"),
+                include_tsx_extension: path_before_query_or_hash(path).ends_with(".tsx"),
+            });
+        }
+    }
+    None
+}
+
+fn quote_after_from(line: &str) -> Option<char> {
+    let from_idx = line.find("from")?;
+    line[from_idx + "from".len()..]
+        .trim_start()
+        .chars()
+        .next()
+        .filter(|c| *c == '\'' || *c == '"')
+}
+
+fn raw_export_path(line: &str) -> Option<&str> {
+    let from_idx = line.find("from")?;
+    let after_from = line[from_idx + "from".len()..].trim_start();
+    let quote = after_from.chars().next()?;
+    if quote != '\'' && quote != '"' {
+        return None;
+    }
+    let start = quote.len_utf8();
+    let end = after_from[start..].find(quote)?;
+    Some(&after_from[start..start + end])
+}
+
+fn path_before_query_or_hash(path: &str) -> &str {
+    let mut end = path.len();
+    if let Some(idx) = path.find('?') {
+        end = end.min(idx);
+    }
+    if let Some(idx) = path.find('#') {
+        end = end.min(idx);
+    }
+    &path[..end]
+}
+
+fn apply_js_import_path_style(path: &str, style: JsExportStyle) -> String {
+    let normalized = path.replace('\\', "/");
+    let without_prefix = normalized.trim_start_matches("./");
+
+    let (base, suffix) = match without_prefix.find(['?', '#']) {
+        Some(idx) => (&without_prefix[..idx], &without_prefix[idx..]),
+        None => (without_prefix, ""),
+    };
+
+    let base = if !style.include_tsx_extension && base.ends_with(".tsx") {
+        &base[..base.len() - ".tsx".len()]
+    } else {
+        base
+    };
+
+    let mut out = String::new();
+    if style.leading_dot_slash {
+        out.push_str("./");
+    }
+    out.push_str(base);
+    out.push_str(suffix);
+    out
+}
+
+fn tsconfig_allows_importing_ts_extensions(start: &Path) -> bool {
+    for dir in start.ancestors() {
+        for name in ["tsconfig.json", "tsconfig.app.json"] {
+            let path = dir.join(name);
+            if !path.exists() {
+                continue;
+            }
+            let Ok(contents) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            if tsconfig_contents_allow_importing_ts_extensions(&contents) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn tsconfig_contents_allow_importing_ts_extensions(contents: &str) -> bool {
+    let Ok(json) = json5::from_str::<Value>(contents) else {
+        return false;
+    };
+    json.get("compilerOptions")
+        .and_then(|options| options.get("allowImportingTsExtensions"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 /// Enum representing the type of icon source
@@ -888,6 +1096,84 @@ mod tests {
 
         assert_eq!(parsed.name, "IconGithub");
         assert_eq!(parsed.file_path, "./mdi:github.svg");
+    }
+
+    #[test]
+    fn formats_js_export_like_existing_barrel() {
+        let existing = "export { default as IconGithub } from \"check.svg\"\n";
+
+        let formatted = format_js_export_for_barrel(
+            "export { default as IconHeart } from './heart.svg';",
+            Some(existing),
+            TsExtensionPolicy::Strip,
+        );
+
+        assert_eq!(formatted, "export { default as IconHeart } from \"heart.svg\"");
+    }
+
+    #[test]
+    fn strips_tsx_extension_when_tsconfig_does_not_allow_it() {
+        let formatted = format_js_export_for_barrel(
+            "export { default as IconHeart } from './heart.tsx';",
+            None,
+            TsExtensionPolicy::Strip,
+        );
+
+        assert_eq!(formatted, "export { default as IconHeart } from './heart';");
+    }
+
+    #[test]
+    fn keeps_tsx_extension_when_tsconfig_allows_it() {
+        let formatted = format_js_export_for_barrel(
+            "export { default as IconHeart } from './heart.tsx';",
+            None,
+            TsExtensionPolicy::Allow,
+        );
+
+        assert_eq!(formatted, "export { default as IconHeart } from './heart.tsx';");
+    }
+
+    #[test]
+    fn tsconfig_allow_does_not_force_tsx_when_barrel_omits_it() {
+        let existing = "export { default as IconStar } from './star';\n";
+
+        let formatted = format_js_export_for_barrel(
+            "export { default as IconHeart } from './heart.tsx';",
+            Some(existing),
+            TsExtensionPolicy::Allow,
+        );
+
+        assert_eq!(formatted, "export { default as IconHeart } from './heart';");
+    }
+
+    #[test]
+    fn keeps_svg_extension_even_when_ts_extensions_are_stripped() {
+        let formatted = format_js_export_for_barrel(
+            "export { default as IconHeart } from './heart.svg';",
+            None,
+            TsExtensionPolicy::Strip,
+        );
+
+        assert_eq!(formatted, "export { default as IconHeart } from './heart.svg';");
+    }
+
+    #[test]
+    fn detects_allow_importing_ts_extensions_from_jsonc_tsconfig() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        std::fs::write(
+            temp_dir.path().join("tsconfig.json"),
+            r#"{
+              // TypeScript allows explicit .tsx import specifiers here.
+              "compilerOptions": {
+                "allowImportingTsExtensions": true,
+              },
+            }"#,
+        )
+        .expect("tsconfig should be written");
+
+        let formatted = render_js_export_line(None, temp_dir.path(), "Heart", "heart", ".tsx");
+
+        assert_eq!(formatted, "export { default as IconHeart } from './heart.tsx';");
     }
 
     #[test]

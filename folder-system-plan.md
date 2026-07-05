@@ -18,7 +18,6 @@ Goal: add a clean configuration system for both project-level defaults and user-
 - Keys:
   - `folder` (local only)
   - `preset` (local only)
-  - `output_line_template` (local only)
   - `svg_view_cmd` (local + global)
 
 ### Global Config (user-level)
@@ -53,18 +52,9 @@ Goal: add a clean configuration system for both project-level defaults and user-
     - `code %filename%`
   - Token support:
     - `%filename%` = full path to the SVG file to open
-- `output_line_template`
-  - Scope: local only
-  - Type: `string`
-  - Default: `export { default as Icon%name% } from './%icon%%ext%';`
-  - Variables:
-    - `%name%`
-    - `%icon%`
-    - `%ext%`
-
 ## Precedence Rules
 
-- For `folder`, `preset`, and `output_line_template`: CLI flag > local config > built-in default.
+- For `folder` and `preset`: CLI flag > local config > built-in default.
 - For `svg_view_cmd`: CLI flag (if added later) > local config > global config > OS default.
 - Unknown keys should be ignored with a warning (non-fatal).
 
@@ -121,7 +111,7 @@ Suggested layout:
 
 ## Acceptance Criteria
 
-- Local config supports `folder`, `preset`, `output_line_template`, and `svg_view_cmd`.
+- Local config supports `folder`, `preset`, and `svg_view_cmd`.
 - Global config supports `svg_view_cmd`.
 - Root schema files are generated from Zod schemas.
 - `o` works for local icons and Iconify search results.

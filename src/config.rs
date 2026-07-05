@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 use crate::utils::{PRESETS_OPTIONS, Preset};
 
 pub const DEFAULT_FOLDER: &str = "src/assets/icons";
-pub const DEFAULT_OUTPUT_LINE_TEMPLATE: &str =
-    "export { default as Icon%name% } from './%icon%%ext%';";
 
 /// Default SVG folder for a given preset. Flutter's convention is
 /// `assets/icons/` at project root; everything else stays `src/assets/icons`.
@@ -22,7 +20,6 @@ pub fn default_folder_for_preset(preset: &str) -> &'static str {
 struct LocalConfigFile {
     folder: Option<String>,
     preset: Option<String>,
-    output_line_template: Option<String>,
     svg_viewer_cmd: Option<String>,
     flutter_barrel_file: Option<String>,
     flutter_barrel_class: Option<String>,
@@ -43,7 +40,6 @@ struct LoadedConfigFile<T> {
 pub struct ResolvedTuiConfig {
     pub folder: String,
     pub preset: String,
-    pub output_line_template: String,
     pub svg_viewer_cmd: Option<String>,
     pub svg_viewer_cmd_source: String,
     pub global_config_loaded: bool,
@@ -57,7 +53,6 @@ pub struct ResolvedTuiConfig {
 pub fn resolve_tui_config(
     cli_folder: Option<&PathBuf>,
     cli_preset: Option<&Preset>,
-    cli_output_line_template: Option<&String>,
 ) -> anyhow::Result<ResolvedTuiConfig> {
     let mut warnings = Vec::new();
     let mut info = Vec::new();
@@ -106,30 +101,6 @@ pub fn resolve_tui_config(
         })
         .unwrap_or_else(|| default_folder_for_preset(&preset).to_string());
 
-    let default_template = DEFAULT_OUTPUT_LINE_TEMPLATE.to_string();
-    let local_template = local
-        .as_ref()
-        .and_then(|config| config.value.output_line_template.clone());
-    let output_line_template = cli_output_line_template
-        .cloned()
-        .or_else(|| local_template.clone())
-        .unwrap_or_else(|| default_template.clone());
-
-    // Flutter ignores `output_line_template`. Warn only if the user customized it.
-    if preset == "flutter" {
-        let user_customized = cli_output_line_template.is_some()
-            || local_template
-                .as_deref()
-                .map(|tpl| tpl != default_template)
-                .unwrap_or(false);
-        if user_customized {
-            warnings.push(
-                "`output_line_template` is ignored when preset is 'flutter' (the Dart barrel format is fixed)."
-                    .to_string(),
-            );
-        }
-    }
-
     let flutter_barrel_file = local
         .as_ref()
         .and_then(|config| config.value.flutter_barrel_file.clone());
@@ -176,7 +147,6 @@ pub fn resolve_tui_config(
     Ok(ResolvedTuiConfig {
         folder,
         preset,
-        output_line_template,
         svg_viewer_cmd,
         svg_viewer_cmd_source,
         global_config_loaded: global.is_some(),
@@ -270,7 +240,6 @@ fn parse_local_value(
             "$schema",
             "folder",
             "preset",
-            "output_line_template",
             "svg_view_cmd",
             "svg_viewer_cmd",
             "flutter_barrel_file",
@@ -307,7 +276,6 @@ fn parse_local_value(
         }
     }
 
-    let output_line_template = read_string_field(&object, path, "output_line_template", false)?;
     let svg_viewer_cmd = read_svg_viewer_cmd(&object, path, warnings)?;
     let flutter_barrel_file = read_string_field(&object, path, "flutter_barrel_file", false)?;
     let flutter_barrel_class = read_string_field(&object, path, "flutter_barrel_class", false)?;
@@ -315,7 +283,6 @@ fn parse_local_value(
     Ok(LocalConfigFile {
         folder,
         preset,
-        output_line_template,
         svg_viewer_cmd,
         flutter_barrel_file,
         flutter_barrel_class,

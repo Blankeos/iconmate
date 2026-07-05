@@ -35,16 +35,6 @@
         "flutter"
       ]
     },
-    "output_line_template": {
-      "type": "string",
-      "minLength": 1,
-      "title": "Output Line Template",
-      "description": "Template for each export line. Supported placeholders: `%name%`, `%icon%`, `%ext%`.",
-      "default": "export { default as Icon%name% } from './%icon%%ext%';",
-      "examples": [
-        "export { default as Icon%name% } from './%icon%%ext%';"
-      ]
-    },
     "svg_view_cmd": {
       "type": "string",
       "minLength": 1,

@@ -85,7 +85,7 @@
     - Clicking a list item - just essentially skips cursor to select the item as the new selected/cursor. Shouldn't really imitate 'enter', it just changes the selection.
     - Scrolling up or down - just scrolls the scroll value obviously. It doesnt change the current selection.
 
-- [ ] Formatting aware barrel files i.e. "./"; or "./" or './' or './'; or "./something.tsx" (for --react or --solid, etc stuff, if it's allowed in tsconfig), should be smart enough to replicate that formatting in js files.
+- [x] Formatting aware barrel files i.e. "./"; or "./" or './' or './'; or "./something.tsx" (for --react or --solid, etc stuff, if it's allowed in tsconfig), should be smart enough to replicate that formatting in js files.
 - [x] The iconmate sync (CLI + read-only TUI dialog; see `_docs/iconmate-sync-plan.md`)
 
 - [x] I noticed for flutter projects.. Doing `iconmate add` doesn't add it to the dart file so when I do `iconmate sync` I still get 'Would add records'

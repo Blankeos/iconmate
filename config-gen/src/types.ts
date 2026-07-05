@@ -26,13 +26,6 @@ export interface IconmateLocalConfig {
   preset?: IconmatePreset;
 
   /**
-   * Template used for each export line in `index.ts`.
-   * Supported variables: `%name%`, `%icon%`, `%ext%`.
-   * Ignored when preset is `"flutter"` (Dart barrel format is fixed).
-   */
-  output_line_template?: string;
-
-  /**
    * Command used to open SVG files from the TUI.
    * Use `%filename%` as the SVG file path placeholder.
    */

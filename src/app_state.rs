@@ -47,7 +47,6 @@ pub enum AppEvent {
 pub struct AppConfig {
     pub folder: String,
     pub preset: String,
-    pub template: Option<String>,
     pub svg_viewer_cmd: Option<String>,
     pub svg_viewer_cmd_source: String,
     pub global_config_loaded: bool,

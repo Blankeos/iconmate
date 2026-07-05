@@ -2,8 +2,6 @@ import * as z from "zod";
 
 export const DEFAULT_FOLDER = "src/assets/icons";
 export const DEFAULT_PRESET = "normal";
-export const DEFAULT_OUTPUT_LINE_TEMPLATE =
-  "export { default as Icon%name% } from './%icon%%ext%';";
 
 export const PRESET_VALUES = [
   "normal",
@@ -44,14 +42,6 @@ export const SvgViewCommandSchema = z.string().min(1).meta({
   examples: ["zed %filename%", "code %filename%", "open %filename%"]
 });
 
-export const OutputLineTemplateSchema = z.string().min(1).meta({
-  title: "Output Line Template",
-  description:
-    "Template for each export line. Supported placeholders: `%name%`, `%icon%`, `%ext%`.",
-  default: DEFAULT_OUTPUT_LINE_TEMPLATE,
-  examples: [DEFAULT_OUTPUT_LINE_TEMPLATE]
-});
-
 export const LocalConfigSchema = z
   .object({
     folder: z.string().min(1).optional().meta({
@@ -60,7 +50,6 @@ export const LocalConfigSchema = z
       examples: [DEFAULT_FOLDER, "src/components/icons"]
     }),
     preset: PresetSchema.optional(),
-    output_line_template: OutputLineTemplateSchema.optional(),
     svg_view_cmd: SvgViewCommandSchema.optional(),
     flutter_barrel_file: FlutterBarrelFileSchema.optional(),
     flutter_barrel_class: FlutterBarrelClassSchema.optional()

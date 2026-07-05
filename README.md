@@ -94,7 +94,6 @@ just config-schema
   "$schema": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json",
   "folder": "src/assets/icons",
   "preset": "normal",
-  "output_line_template": "export { default as Icon%name% } from './%icon%%ext%';",
   "svg_view_cmd": "zed %filename%",
   "flutter_barrel_file": "lib/icons.dart",
   "flutter_barrel_class": "AppIcons"
@@ -107,7 +106,6 @@ Local config keys:
 
 - `folder` (default: `src/assets/icons`, or `assets/icons` when `preset` is `flutter`)
 - `preset` (default: `normal`, meaning plain `.svg` mode; auto-switches to `flutter` in detected Flutter projects)
-- `output_line_template` (default: `export { default as Icon%name% } from './%icon%%ext%';`; ignored when `preset` is `flutter`)
 - `svg_view_cmd` (supports `%filename%` token)
 - `flutter_barrel_file` (Flutter preset only; default: `lib/icons.dart`)
 - `flutter_barrel_class` (Flutter preset only; default: `AppIcons`)
@@ -158,15 +156,15 @@ curl -sSL https://raw.githubusercontent.com/Blankeos/iconmate/main/install.sh | 
 
 Determines the output filetype and the contents inside that file type.
 
-| Preset     | File Type | Framework                                      |
-| ---------- | --------- | ---------------------------------------------- |
-| `normal`   | `.svg`    | Vanilla HTML/CSS                               |
-| `react`    | `.tsx`    | React Components                               |
-| `svelte`   | `.svelte` | Svelte Components                              |
-| `solid`    | `.tsx`    | Solid Components                               |
-| `vue`      | `.vue`    | Vue Components                                 |
-| `emptysvg` | `.svg`    | Placeholder                                    |
-| `flutter`  | `.svg`    | Dart barrel (`lib/icons.dart` / `AppIcons.*`)  |
+| Preset     | File Type | Framework                                     |
+| ---------- | --------- | --------------------------------------------- |
+| `normal`   | `.svg`    | Vanilla HTML/CSS                              |
+| `react`    | `.tsx`    | React Components                              |
+| `svelte`   | `.svelte` | Svelte Components                             |
+| `solid`    | `.tsx`    | Solid Components                              |
+| `vue`      | `.vue`    | Vue Components                                |
+| `emptysvg` | `.svg`    | Placeholder                                   |
+| `flutter`  | `.svg`    | Dart barrel (`lib/icons.dart` / `AppIcons.*`) |
 
 > [!IMPORTANT]
 > If you want to use `.svg` file types, make sure to setup [svgr](https://github.com/gregberge/svgr) for your js apps. I covered how to do this in:
@@ -250,12 +248,6 @@ You can also pull raw SVG directly from the Iconify API:
 
 ```bash
 iconmate add --folder src/assets/icons --icon "$(curl -fsSL https://api.iconify.design/mdi:heart.svg)" --name Heart
-```
-
-### Custom Export Template
-
-```bash
-iconmate add --folder src/assets/icons --icon heroicons:heart --name Heart --output-line-template "export { ReactComponent as Icon%name% } from './%icon%.svg?react';"
 ```
 
 ### Delete icons

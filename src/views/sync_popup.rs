@@ -44,17 +44,12 @@ fn build_sync_plan(
     config: &crate::app_state::AppConfig,
 ) -> anyhow::Result<SyncPlan> {
     let folder = PathBuf::from(&config.folder);
-    let template = config
-        .template
-        .clone()
-        .unwrap_or_else(|| crate::config::DEFAULT_OUTPUT_LINE_TEMPLATE.to_string());
     let barrel_file = config.flutter_barrel_file.as_deref().map(Path::new);
     let renames: HashMap<String, String> = HashMap::new();
 
     let ctx = sync::SyncContext {
         folder: &folder,
         preset: &config.preset,
-        output_line_template: &template,
         flutter_barrel_file: barrel_file,
         flutter_barrel_class: config.flutter_barrel_class.as_deref(),
         renames: &renames,

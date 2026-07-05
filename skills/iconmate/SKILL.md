@@ -146,18 +146,9 @@ iconmate add --folder src/assets/icons --icon https://api.iconify.design/mdi:hea
 iconmate add --folder src/assets/icons --icon '<svg>...</svg>' --name Heart
 ```
 
-### Custom export template
-
-```bash
-iconmate add --folder src/assets/icons --icon mdi:heart --name Heart \
-  --output-line-template "export { ReactComponent as Icon%name% } from './%icon%.svg?react';"
-```
-
-Template variables: `%name%` (PascalCase alias), `%icon%` (filename without extension), `%ext%` (file extension).
-
 ## Configuration
 
-Check for `iconmate.config.json` or `iconmate.config.jsonc` in the project root. If present, respect its `folder`, `preset`, and `output_line_template` values. CLI flags override config values.
+Check for `iconmate.config.json` or `iconmate.config.jsonc` in the project root. If present, respect its `folder` and `preset` values. CLI flags override config values.
 
 ## Tips
 

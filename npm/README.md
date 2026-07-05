@@ -94,7 +94,6 @@ just config-schema
   "$schema": "https://raw.githubusercontent.com/Blankeos/iconmate/main/iconmatelocal.schema.json",
   "folder": "src/assets/icons",
   "preset": "normal",
-  "output_line_template": "export { default as Icon%name% } from './%icon%%ext%';",
   "svg_view_cmd": "zed %filename%"
 }
 ```
@@ -105,7 +104,6 @@ Local config keys:
 
 - `folder` (default: `src/assets/icons`)
 - `preset` (default: `normal`, meaning plain `.svg` mode)
-- `output_line_template` (default: `export { default as Icon%name% } from './%icon%%ext%';`)
 - `svg_view_cmd` (supports `%filename%` token)
 
 Allowed `preset` values:
@@ -203,12 +201,6 @@ You can also pull raw SVG directly from the Iconify API:
 
 ```bash
 iconmate add --folder src/assets/icons --icon "$(curl -fsSL https://api.iconify.design/mdi:heart.svg)" --name Heart
-```
-
-### Custom Export Template
-
-```bash
-iconmate add --folder src/assets/icons --icon heroicons:heart --name Heart --output-line-template "export { ReactComponent as Icon%name% } from './%icon%.svg?react';"
 ```
 
 ### Delete icons

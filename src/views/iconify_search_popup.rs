@@ -1160,7 +1160,6 @@ mod tests {
         let config = AppConfig {
             folder: folder.to_string_lossy().into_owned(),
             preset: "normal".to_string(),
-            template: None,
             svg_viewer_cmd: None,
             svg_viewer_cmd_source: "test".to_string(),
             global_config_loaded: false,
@@ -1457,7 +1456,6 @@ mod tests {
         let config = AppConfig {
             folder: folder.to_string_lossy().into_owned(),
             preset: "normal".to_string(),
-            template: None,
             svg_viewer_cmd: None,
             svg_viewer_cmd_source: "test".to_string(),
             global_config_loaded: false,
