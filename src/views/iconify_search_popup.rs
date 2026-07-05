@@ -496,18 +496,12 @@ impl App {
                 let height = area.height as usize;
 
                 match mouse.kind {
-                    MouseEventKind::ScrollUp => scroll::scroll_viewport(
-                        &mut state.icons_scroll_offset,
-                        -3,
-                        len,
-                        height,
-                    ),
-                    MouseEventKind::ScrollDown => scroll::scroll_viewport(
-                        &mut state.icons_scroll_offset,
-                        3,
-                        len,
-                        height,
-                    ),
+                    MouseEventKind::ScrollUp => {
+                        scroll::scroll_viewport(&mut state.icons_scroll_offset, -3, len, height)
+                    }
+                    MouseEventKind::ScrollDown => {
+                        scroll::scroll_viewport(&mut state.icons_scroll_offset, 3, len, height)
+                    }
                     MouseEventKind::Down(MouseButton::Left) => {
                         if mouse.row >= area.y
                             && mouse.row < area.y + area.height
@@ -945,31 +939,31 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                     )))]
                 } else {
                     collection_items
-                    .iter()
-                    .map(|item| {
-                        let total_label = match item.total {
-                            Some(total) => format!("{total}"),
-                            None => "-".to_string(),
-                        };
-                        let line = Line::from(vec![
-                            Span::styled(
-                                format!("{: <10}", item.prefix),
-                                Style::default()
-                                    .fg(crate::views::theme::ACCENT_SOFT)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(
-                                format!(" {total_label: <6}"),
-                                Style::default().fg(crate::views::theme::MUTED_TEXT),
-                            ),
-                            Span::styled(
-                                item.name.clone(),
-                                Style::default().fg(crate::views::theme::TEXT),
-                            ),
-                        ]);
-                        ListItem::new(line)
-                    })
-                    .collect()
+                        .iter()
+                        .map(|item| {
+                            let total_label = match item.total {
+                                Some(total) => format!("{total}"),
+                                None => "-".to_string(),
+                            };
+                            let line = Line::from(vec![
+                                Span::styled(
+                                    format!("{: <10}", item.prefix),
+                                    Style::default()
+                                        .fg(crate::views::theme::ACCENT_SOFT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(
+                                    format!(" {total_label: <6}"),
+                                    Style::default().fg(crate::views::theme::MUTED_TEXT),
+                                ),
+                                Span::styled(
+                                    item.name.clone(),
+                                    Style::default().fg(crate::views::theme::TEXT),
+                                ),
+                            ]);
+                            ListItem::new(line)
+                        })
+                        .collect()
                 };
                 (items, col_len, col_is_empty)
             };
@@ -1060,8 +1054,7 @@ pub fn render_iconify_search_popup(f: &mut Frame, app: &mut App) {
                 *list_state.offset_mut() = state.icons_scroll_offset;
                 let in_view = list_visible_height > 0
                     && state.selected_icon_index >= state.icons_scroll_offset
-                    && state.selected_icon_index
-                        < state.icons_scroll_offset + list_visible_height;
+                    && state.selected_icon_index < state.icons_scroll_offset + list_visible_height;
                 if in_view {
                     list_state.select(Some(state.selected_icon_index));
                 }

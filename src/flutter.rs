@@ -34,13 +34,69 @@ pub struct FlutterProject {
 /// every context (contextual keywords like `async` are fine as identifiers),
 /// but covers the ones that will actually produce compile errors.
 const DART_RESERVED_WORDS: &[&str] = &[
-    "abstract", "as", "assert", "break", "case", "catch", "class", "const", "continue", "default",
-    "deferred", "do", "dynamic", "else", "enum", "export", "extends", "extension", "external",
-    "factory", "false", "final", "finally", "for", "Function", "get", "hide", "if", "implements",
-    "import", "in", "interface", "is", "late", "library", "mixin", "new", "null", "of", "on",
-    "operator", "part", "required", "rethrow", "return", "sealed", "set", "show", "static",
-    "super", "switch", "sync", "this", "throw", "true", "try", "typedef", "var", "void", "when",
-    "while", "with", "yield",
+    "abstract",
+    "as",
+    "assert",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "deferred",
+    "do",
+    "dynamic",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "extension",
+    "external",
+    "factory",
+    "false",
+    "final",
+    "finally",
+    "for",
+    "Function",
+    "get",
+    "hide",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "interface",
+    "is",
+    "late",
+    "library",
+    "mixin",
+    "new",
+    "null",
+    "of",
+    "on",
+    "operator",
+    "part",
+    "required",
+    "rethrow",
+    "return",
+    "sealed",
+    "set",
+    "show",
+    "static",
+    "super",
+    "switch",
+    "sync",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typedef",
+    "var",
+    "void",
+    "when",
+    "while",
+    "with",
+    "yield",
 ];
 
 /// Normalize a raw string (filename stem, icon name, or explicit `--name`)
@@ -160,7 +216,10 @@ fn parse_dart_barrel_line(line: &str) -> Option<DartBarrelEntry> {
     }
     let rest = trimmed.trim_start_matches("static const").trim_start();
     // Optional type annotation.
-    let rest = rest.strip_prefix("String").map(|s| s.trim_start()).unwrap_or(rest);
+    let rest = rest
+        .strip_prefix("String")
+        .map(|s| s.trim_start())
+        .unwrap_or(rest);
     let eq_pos = rest.find('=')?;
     let identifier = rest[..eq_pos].trim().to_string();
     if identifier.is_empty() {
@@ -401,13 +460,12 @@ pub fn barrel_entries_to_icon_entries(entries: &[DartBarrelEntry], folder: &str)
         .iter()
         .map(|entry| {
             let asset_norm = entry.asset_path.replace('\\', "/");
-            let file_path = if !folder_norm.is_empty()
-                && asset_norm.starts_with(&format!("{folder_norm}/"))
-            {
-                asset_norm[folder_norm.len() + 1..].to_string()
-            } else {
-                asset_norm
-            };
+            let file_path =
+                if !folder_norm.is_empty() && asset_norm.starts_with(&format!("{folder_norm}/")) {
+                    asset_norm[folder_norm.len() + 1..].to_string()
+                } else {
+                    asset_norm
+                };
             IconEntry {
                 name: entry.identifier.clone(),
                 file_path,
@@ -592,9 +650,12 @@ mod tests {
             identifier: "heart".to_string(),
             asset_path: "assets/icons/heart.svg".to_string(),
         }];
-        let updated =
-            rename_entry_path(&existing, "assets/icons/heart.svg", "assets/icons/redheart.svg")
-                .unwrap();
+        let updated = rename_entry_path(
+            &existing,
+            "assets/icons/heart.svg",
+            "assets/icons/redheart.svg",
+        )
+        .unwrap();
         assert_eq!(updated.len(), 1);
         assert_eq!(updated[0].identifier, "heart");
         assert_eq!(updated[0].asset_path, "assets/icons/redheart.svg");
@@ -653,9 +714,7 @@ mod tests {
                 asset_path: "assets/icons/mdi_heart.svg".to_string(),
             },
         ];
-        assert!(
-            resolve_unique_identifier(&existing, "heart", Some("mdi:heart")).is_err()
-        );
+        assert!(resolve_unique_identifier(&existing, "heart", Some("mdi:heart")).is_err());
     }
 
     #[test]

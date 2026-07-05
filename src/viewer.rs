@@ -14,6 +14,9 @@ pub fn open_svg_with_fallback(
     svg_path: &Path,
     svg_viewer_cmd: Option<&str>,
 ) -> anyhow::Result<OpenSvgOutcome> {
+    let resolved_path = crate::utils::resolve_existing_icon_path(svg_path);
+    let svg_path = resolved_path.as_path();
+
     if !svg_path.exists() {
         anyhow::bail!("Icon file not found: {}", svg_path.display());
     }

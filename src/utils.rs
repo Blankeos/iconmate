@@ -770,15 +770,16 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
     use std::path::Path;
 
     let path = Path::new(file_path);
+    let resolved_path = resolve_existing_icon_path(path);
 
     // Delete the icon file when present. We still continue to clean index.ts
     // if the file is already missing (stale export entry).
-    if path.exists() {
-        fs::remove_file(path)?;
+    if resolved_path.exists() {
+        fs::remove_file(&resolved_path)?;
     }
 
     // Find the parent folder and index.ts
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = resolved_path.parent().or_else(|| path.parent()) {
         let index_path = parent.join("index.ts");
 
         if index_path.exists() {
@@ -786,7 +787,7 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
             let contents = fs::read_to_string(&index_path)?;
 
             // Generate the file path relative to the parent folder
-            let relative_path = path
+            let relative_path = resolved_path
                 .strip_prefix(parent)
                 .ok()
                 .and_then(|value| value.to_str())
@@ -813,7 +814,7 @@ pub fn delete_icon_entry(file_path: &str) -> anyhow::Result<()> {
 
                     parsed_export_in_line = true;
                     let should_remove =
-                        normalize_icon_relative_path(&entry.file_path) == normalized_relative_path;
+                        icon_relative_paths_match(&entry.file_path, &normalized_relative_path);
 
                     if should_remove {
                         found_export = true;
@@ -853,6 +854,29 @@ fn normalize_icon_relative_path(value: &str) -> String {
         .to_string()
 }
 
+fn strip_tsx_extension(value: &str) -> &str {
+    value.strip_suffix(".tsx").unwrap_or(value)
+}
+
+fn icon_relative_paths_match(left: &str, right: &str) -> bool {
+    let left = normalize_icon_relative_path(left);
+    let right = normalize_icon_relative_path(right);
+    left == right || strip_tsx_extension(&left) == strip_tsx_extension(&right)
+}
+
+pub fn resolve_existing_icon_path(path: &Path) -> std::path::PathBuf {
+    if path.exists() || path.extension().is_some() {
+        return path.to_path_buf();
+    }
+
+    let tsx_path = path.with_extension("tsx");
+    if tsx_path.exists() {
+        tsx_path
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn split_import_path_suffix(value: &str) -> (&str, &str) {
     let query_index = value.find('?');
     let hash_index = value.find('#');
@@ -886,15 +910,25 @@ fn replace_import_path_in_export_statement(
     let matched_path = &statement[path_start_idx..path_end_idx];
     let (matched_base_path, matched_suffix) = split_import_path_suffix(matched_path);
 
-    if normalize_icon_relative_path(matched_base_path) != current_relative_path {
+    if !icon_relative_paths_match(matched_base_path, current_relative_path) {
         return None;
     }
 
     let with_dot_prefix = matched_base_path.starts_with("./");
-    let replacement_path = if with_dot_prefix {
-        format!("./{}", new_relative_path)
+    let matched_uses_extensionless_tsx =
+        Path::new(&normalize_icon_relative_path(matched_base_path))
+            .extension()
+            .is_none()
+            && new_relative_path.ends_with(".tsx");
+    let replacement_base = if matched_uses_extensionless_tsx {
+        strip_tsx_extension(new_relative_path)
     } else {
-        new_relative_path.to_string()
+        new_relative_path
+    };
+    let replacement_path = if with_dot_prefix {
+        format!("./{}", replacement_base)
+    } else {
+        replacement_base.to_string()
     };
 
     Some(format!(
@@ -915,7 +949,8 @@ pub fn rename_icon_entry(
     use std::fs;
     use std::path::{Component, Path};
 
-    let current_relative_path = normalize_icon_relative_path(current_file_path);
+    let requested_current_relative_path = normalize_icon_relative_path(current_file_path);
+    let current_relative_path = requested_current_relative_path.clone();
     if current_relative_path.is_empty() {
         anyhow::bail!("Current icon path is empty");
     }
@@ -936,7 +971,20 @@ pub fn rename_icon_entry(
         anyhow::bail!("Parent directory traversals are not allowed");
     }
 
-    if new_path.extension().is_none() {
+    let folder = Path::new(folder_path);
+    let current_abs_path =
+        resolve_existing_icon_path(&folder.join(&requested_current_relative_path));
+    let current_relative_path = current_abs_path
+        .strip_prefix(folder)
+        .ok()
+        .and_then(|value| value.to_str())
+        .map(normalize_icon_relative_path)
+        .unwrap_or(requested_current_relative_path);
+    if !current_abs_path.exists() {
+        anyhow::bail!("Icon file not found: {}", current_abs_path.display());
+    }
+
+    if Path::new(&new_relative_path).extension().is_none() {
         if let Some(extension) = Path::new(&current_relative_path)
             .extension()
             .and_then(|ext| ext.to_str())
@@ -947,12 +995,6 @@ pub fn rename_icon_entry(
 
     if new_relative_path == current_relative_path {
         anyhow::bail!("Filename is unchanged");
-    }
-
-    let folder = Path::new(folder_path);
-    let current_abs_path = folder.join(&current_relative_path);
-    if !current_abs_path.exists() {
-        anyhow::bail!("Icon file not found: {}", current_abs_path.display());
     }
 
     let new_abs_path = folder.join(&new_relative_path);
@@ -1108,7 +1150,10 @@ mod tests {
             TsExtensionPolicy::Strip,
         );
 
-        assert_eq!(formatted, "export { default as IconHeart } from \"heart.svg\"");
+        assert_eq!(
+            formatted,
+            "export { default as IconHeart } from \"heart.svg\""
+        );
     }
 
     #[test]
@@ -1130,7 +1175,10 @@ mod tests {
             TsExtensionPolicy::Allow,
         );
 
-        assert_eq!(formatted, "export { default as IconHeart } from './heart.tsx';");
+        assert_eq!(
+            formatted,
+            "export { default as IconHeart } from './heart.tsx';"
+        );
     }
 
     #[test]
@@ -1154,7 +1202,10 @@ mod tests {
             TsExtensionPolicy::Strip,
         );
 
-        assert_eq!(formatted, "export { default as IconHeart } from './heart.svg';");
+        assert_eq!(
+            formatted,
+            "export { default as IconHeart } from './heart.svg';"
+        );
     }
 
     #[test]
@@ -1173,7 +1224,10 @@ mod tests {
 
         let formatted = render_js_export_line(None, temp_dir.path(), "Heart", "heart", ".tsx");
 
-        assert_eq!(formatted, "export { default as IconHeart } from './heart.tsx';");
+        assert_eq!(
+            formatted,
+            "export { default as IconHeart } from './heart.tsx';"
+        );
     }
 
     #[test]
@@ -1510,5 +1564,60 @@ mod tests {
                 .contains("export { default as IconRename } from './renamed.svg?react#hash';"),
             "index.ts should keep suffix while updating path"
         );
+    }
+
+    #[test]
+    fn delete_icon_entry_resolves_extensionless_tsx_export() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        let remove_file = icons_folder.join("heart.tsx");
+        std::fs::write(&remove_file, "export default function Icon() {}")
+            .expect("tsx file should be created");
+        std::fs::write(
+            icons_folder.join("index.ts"),
+            "export { default as IconHeart } from './heart';\nexport { default as IconStar } from './star.svg';\n",
+        )
+        .expect("index.ts should be created");
+
+        delete_icon_entry(icons_folder.join("heart").to_string_lossy().as_ref())
+            .expect("delete should resolve heart.tsx");
+
+        assert!(!remove_file.exists());
+        let updated = std::fs::read_to_string(icons_folder.join("index.ts")).unwrap();
+        assert!(!updated.contains("IconHeart"));
+        assert!(updated.contains("IconStar"));
+    }
+
+    #[test]
+    fn renames_extensionless_tsx_export_without_adding_extension_to_barrel() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let icons_folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&icons_folder).expect("icons folder should be created");
+
+        std::fs::write(
+            icons_folder.join("heart.tsx"),
+            "export default function Icon() {}",
+        )
+        .expect("tsx file should be created");
+        std::fs::write(
+            icons_folder.join("index.ts"),
+            "export { default as IconHeart } from './heart';\n",
+        )
+        .expect("index.ts should be created");
+
+        rename_icon_entry(
+            icons_folder.to_string_lossy().as_ref(),
+            "./heart",
+            "favorite",
+        )
+        .expect("rename should resolve heart.tsx");
+
+        assert!(!icons_folder.join("heart.tsx").exists());
+        assert!(icons_folder.join("favorite.tsx").exists());
+        let updated = std::fs::read_to_string(icons_folder.join("index.ts")).unwrap();
+        assert!(updated.contains("from './favorite';"));
+        assert!(!updated.contains("favorite.tsx"));
     }
 }

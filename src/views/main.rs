@@ -118,7 +118,11 @@ impl App {
 
     fn ensure_main_selection_visible(&mut self) {
         let height = self.main_visible_height();
-        scroll::ensure_visible(self.selected_index, &mut self.main_state.list_scroll_offset, height);
+        scroll::ensure_visible(
+            self.selected_index,
+            &mut self.main_state.list_scroll_offset,
+            height,
+        );
     }
 
     fn move_main_selection_up(&mut self) {
@@ -128,8 +132,8 @@ impl App {
             self.main_state.list_scroll_offset = 0;
             return;
         }
-        self.selected_index = (self.selected_index as i32 - 1)
-            .rem_euclid(item_count as i32) as usize;
+        self.selected_index =
+            (self.selected_index as i32 - 1).rem_euclid(item_count as i32) as usize;
         self.ensure_main_selection_visible();
     }
 
@@ -169,20 +173,10 @@ impl App {
 
         match mouse.kind {
             MouseEventKind::ScrollUp => {
-                scroll::scroll_viewport(
-                    &mut self.main_state.list_scroll_offset,
-                    -3,
-                    len,
-                    height,
-                );
+                scroll::scroll_viewport(&mut self.main_state.list_scroll_offset, -3, len, height);
             }
             MouseEventKind::ScrollDown => {
-                scroll::scroll_viewport(
-                    &mut self.main_state.list_scroll_offset,
-                    3,
-                    len,
-                    height,
-                );
+                scroll::scroll_viewport(&mut self.main_state.list_scroll_offset, 3, len, height);
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse.row >= rows_area.y

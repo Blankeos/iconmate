@@ -19,13 +19,28 @@ use crate::utils::{IconEntry, parse_export_line_ts, render_js_export_line};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Addition {
-    /// Folder-relative SVG filename, e.g. `heart.svg`.
+    /// Folder-relative generated icon filename, e.g. `heart.svg` or `heart.tsx`.
     pub file_path: String,
     /// Final barrel identifier after template rendering (JS: e.g. `IconHeart`;
     /// Flutter: e.g. `heart`). Unique within the plan.
     pub identifier: String,
     /// For JS presets only: the full export line that would be appended.
     pub rendered_line: Option<String>,
+}
+
+fn js_barrel_disk_keys(value: &str) -> Vec<String> {
+    let basename = value
+        .replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .to_string();
+
+    let mut keys = vec![basename.clone()];
+    if let Some(stripped) = basename.strip_suffix(".tsx") {
+        keys.push(stripped.to_string());
+    }
+    keys
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,6 +98,14 @@ pub struct ApplySummary {
 /// Scan `folder` for flat `*.svg` files. Returns folder-relative names. We
 /// intentionally do not recurse: iconmate writes to a flat folder.
 pub fn find_svg_files(folder: &Path) -> anyhow::Result<Vec<String>> {
+    find_files_with_extensions(folder, &["svg"])
+}
+
+fn find_js_icon_files(folder: &Path) -> anyhow::Result<Vec<String>> {
+    find_files_with_extensions(folder, &["svg", "tsx", "svelte", "vue"])
+}
+
+fn find_files_with_extensions(folder: &Path, extensions: &[&str]) -> anyhow::Result<Vec<String>> {
     if !folder.exists() {
         return Ok(Vec::new());
     }
@@ -95,7 +118,15 @@ pub fn find_svg_files(folder: &Path) -> anyhow::Result<Vec<String>> {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.to_ascii_lowercase().ends_with(".svg") {
+        let extension = Path::new(&name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase());
+        if extension
+            .as_deref()
+            .map(|ext| extensions.contains(&ext))
+            .unwrap_or(false)
+        {
             out.push(name);
         }
     }
@@ -187,32 +218,31 @@ fn compute_js_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
         Vec::new()
     };
 
-    let svgs_on_disk = find_svg_files(ctx.folder)?;
-    let disk_set: HashSet<&str> = svgs_on_disk.iter().map(|s| s.as_str()).collect();
+    let files_on_disk = find_js_icon_files(ctx.folder)?;
+    let disk_set: HashSet<String> = files_on_disk
+        .iter()
+        .flat_map(|filename| js_barrel_disk_keys(filename))
+        .collect();
 
     // Existing barrel entries, indexed by the final path component. iconmate
     // writes flat folders so basename matching is sufficient.
-    let basename_of = |value: &str| -> String {
-        value
-            .replace('\\', "/")
-            .rsplit('/')
-            .next()
-            .unwrap_or("")
-            .to_string()
-    };
     let mut barrel_paths: HashMap<String, usize> = HashMap::new();
     for (i, e) in entries.iter().enumerate() {
-        barrel_paths.insert(basename_of(&e.file_path), i);
+        for key in js_barrel_disk_keys(&e.file_path) {
+            barrel_paths.insert(key, i);
+        }
     }
 
-    let existing_identifiers: HashSet<String> =
-        entries.iter().map(|e| e.name.clone()).collect();
+    let existing_identifiers: HashSet<String> = entries.iter().map(|e| e.name.clone()).collect();
 
     let mut additions = Vec::new();
     let mut collisions = Vec::new();
 
-    for filename in &svgs_on_disk {
-        if barrel_paths.contains_key(filename) {
+    for filename in &files_on_disk {
+        if js_barrel_disk_keys(filename)
+            .iter()
+            .any(|key| barrel_paths.contains_key(key))
+        {
             continue;
         }
         let (stem, _) = stem_of(filename);
@@ -220,13 +250,20 @@ fn compute_js_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
         if inferred_alias.is_empty() {
             continue;
         }
-        let Some((rendered, full_name)) =
-            render_js_addition(ctx.folder, barrel_contents.as_deref(), filename, &inferred_alias)
-        else {
+        let Some((rendered, full_name)) = render_js_addition(
+            ctx.folder,
+            barrel_contents.as_deref(),
+            filename,
+            &inferred_alias,
+        ) else {
             continue;
         };
 
-        let final_name = ctx.renames.get(&full_name).cloned().unwrap_or(full_name.clone());
+        let final_name = ctx
+            .renames
+            .get(&full_name)
+            .cloned()
+            .unwrap_or(full_name.clone());
         if final_name != full_name {
             // Rerender with the overridden alias. We need to figure out what
             // `%name%` value would produce `final_name`. Simplest approach:
@@ -269,8 +306,10 @@ fn compute_js_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
     let mut removals = Vec::new();
     entries.sort_by(|a, b| a.file_path.cmp(&b.file_path));
     for entry in &entries {
-        let normalized = basename_of(&entry.file_path);
-        if !disk_set.contains(normalized.as_str()) {
+        if !js_barrel_disk_keys(&entry.file_path)
+            .iter()
+            .any(|key| disk_set.contains(key))
+        {
             removals.push(Removal {
                 identifier: entry.name.clone(),
                 file_path: entry.file_path.clone(),
@@ -313,8 +352,7 @@ fn compute_flutter_sync_plan(ctx: &SyncContext) -> anyhow::Result<SyncPlan> {
     let barrel_basenames: HashSet<String> =
         entries.iter().map(|e| basename_of(&e.asset_path)).collect();
 
-    let existing_ids: HashSet<String> =
-        entries.iter().map(|e| e.identifier.clone()).collect();
+    let existing_ids: HashSet<String> = entries.iter().map(|e| e.identifier.clone()).collect();
 
     let mut additions = Vec::new();
     let mut collisions = Vec::new();
@@ -494,8 +532,11 @@ fn apply_flutter(
     let mut summary = ApplySummary::default();
 
     if options.prune && !plan.removals.is_empty() {
-        let remove_ids: HashSet<&str> =
-            plan.removals.iter().map(|r| r.identifier.as_str()).collect();
+        let remove_ids: HashSet<&str> = plan
+            .removals
+            .iter()
+            .map(|r| r.identifier.as_str())
+            .collect();
         entries.retain(|e| !remove_ids.contains(e.identifier.as_str()));
         summary.removed = plan.removals.len();
     }
@@ -584,7 +625,9 @@ pub fn render_plan_text(plan: &SyncPlan, use_color: bool) -> String {
         }
     }
     if !plan.collisions.is_empty() {
-        out.push_str("Resolve collisions with --rename <inferred>=<newName>, or rename the SVG on disk.\n");
+        out.push_str(
+            "Resolve collisions with --rename <inferred>=<newName>, or rename the SVG on disk.\n",
+        );
     }
 
     out
@@ -623,6 +666,60 @@ mod tests {
         };
         let plan = compute_sync_plan(&ctx).unwrap();
         assert!(plan.is_clean(), "{}", render_plan_text(&plan, false));
+    }
+
+    #[test]
+    fn js_extensionless_tsx_barrel_entry_is_clean_when_tsx_exists() {
+        let tmp = TempDir::new().unwrap();
+        let folder = tmp.path();
+        write_file(
+            &folder.join("lucide-check.tsx"),
+            "export default function Icon() {}",
+        );
+        write_file(
+            &folder.join("index.ts"),
+            "export { default as IconCheck } from \"./lucide-check\";\n",
+        );
+
+        let renames = HashMap::new();
+        let ctx = SyncContext {
+            folder,
+            preset: "react",
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
+            renames: &renames,
+        };
+        let plan = compute_sync_plan(&ctx).unwrap();
+        assert!(plan.is_clean(), "{}", render_plan_text(&plan, false));
+    }
+
+    #[test]
+    fn js_orphan_tsx_file_is_addition_with_extensionless_import_when_tsconfig_disallows_it() {
+        let tmp = TempDir::new().unwrap();
+        let folder = tmp.path();
+        write_file(
+            &folder.join("lucide-check.tsx"),
+            "export default function Icon() {}",
+        );
+        write_file(&folder.join("index.ts"), "");
+
+        let renames = HashMap::new();
+        let ctx = SyncContext {
+            folder,
+            preset: "react",
+            flutter_barrel_file: None,
+            flutter_barrel_class: None,
+            renames: &renames,
+        };
+        let plan = compute_sync_plan(&ctx).unwrap();
+
+        assert!(plan.removals.is_empty());
+        assert_eq!(plan.additions.len(), 1);
+        assert_eq!(plan.additions[0].file_path, "./lucide-check.tsx");
+        assert_eq!(
+            plan.additions[0].rendered_line.as_deref(),
+            Some("export { default as IconLucideCheck } from './lucide-check';")
+        );
     }
 
     #[test]
@@ -695,7 +792,12 @@ mod tests {
             renames: &renames,
         };
         let plan = compute_sync_plan(&ctx).unwrap();
-        assert_eq!(plan.collisions.len(), 1, "plan: {}", render_plan_text(&plan, false));
+        assert_eq!(
+            plan.collisions.len(),
+            1,
+            "plan: {}",
+            render_plan_text(&plan, false)
+        );
         assert_eq!(plan.collisions[0].inferred_identifier, "IconHeart");
     }
 
@@ -719,12 +821,15 @@ mod tests {
             renames: &renames,
         };
         let plan = compute_sync_plan(&ctx).unwrap();
-        assert!(plan.collisions.is_empty(), "plan: {}", render_plan_text(&plan, false));
+        assert!(
+            plan.collisions.is_empty(),
+            "plan: {}",
+            render_plan_text(&plan, false)
+        );
         assert_eq!(plan.additions.len(), 1);
         assert_eq!(plan.additions[0].identifier, "IconHeart2");
         assert!(
-            plan
-                .additions[0]
+            plan.additions[0]
                 .rendered_line
                 .as_ref()
                 .unwrap()

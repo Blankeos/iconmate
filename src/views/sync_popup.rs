@@ -40,9 +40,7 @@ impl App {
     }
 }
 
-fn build_sync_plan(
-    config: &crate::app_state::AppConfig,
-) -> anyhow::Result<SyncPlan> {
+fn build_sync_plan(config: &crate::app_state::AppConfig) -> anyhow::Result<SyncPlan> {
     let folder = PathBuf::from(&config.folder);
     let barrel_file = config.flutter_barrel_file.as_deref().map(Path::new);
     let renames: HashMap<String, String> = HashMap::new();
@@ -125,7 +123,9 @@ fn plan_to_lines(plan: &SyncPlan) -> Vec<Line<'static>> {
     if plan.is_clean() {
         lines.push(Line::from(Span::styled(
             "● It's clean and synced!",
-            Style::default().fg(theme::ACCENT).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
         )));
         return lines;
     }
@@ -137,7 +137,10 @@ fn plan_to_lines(plan: &SyncPlan) -> Vec<Line<'static>> {
         )));
         for a in &plan.additions {
             lines.push(Line::from(vec![
-                Span::styled(format!("  + {:<24}", a.identifier), Style::default().fg(ADD_COLOR)),
+                Span::styled(
+                    format!("  + {:<24}", a.identifier),
+                    Style::default().fg(ADD_COLOR),
+                ),
                 Span::styled(" → ", muted),
                 Span::styled(a.file_path.clone(), Style::default().fg(ADD_COLOR)),
                 Span::styled("  (orphan file)", subtle),
@@ -149,11 +152,16 @@ fn plan_to_lines(plan: &SyncPlan) -> Vec<Line<'static>> {
     if !plan.removals.is_empty() {
         lines.push(Line::from(Span::styled(
             format!("Would prune ({}):", plan.removals.len()),
-            Style::default().fg(PRUNE_COLOR).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(PRUNE_COLOR)
+                .add_modifier(Modifier::BOLD),
         )));
         for r in &plan.removals {
             lines.push(Line::from(vec![
-                Span::styled(format!("  - {:<24}", r.identifier), Style::default().fg(PRUNE_COLOR)),
+                Span::styled(
+                    format!("  - {:<24}", r.identifier),
+                    Style::default().fg(PRUNE_COLOR),
+                ),
                 Span::styled(" → ", muted),
                 Span::styled(r.file_path.clone(), Style::default().fg(PRUNE_COLOR)),
                 Span::styled("  (file missing)", subtle),
@@ -169,9 +177,15 @@ fn plan_to_lines(plan: &SyncPlan) -> Vec<Line<'static>> {
         )));
         for c in &plan.collisions {
             lines.push(Line::from(vec![
-                Span::styled(format!("  ! {}", c.inferred_identifier), Style::default().fg(WARN_COLOR)),
+                Span::styled(
+                    format!("  ! {}", c.inferred_identifier),
+                    Style::default().fg(WARN_COLOR),
+                ),
                 Span::styled(" collides with ", muted),
-                Span::styled(format!("`{}`", c.conflicting_identifier), Style::default().fg(WARN_COLOR)),
+                Span::styled(
+                    format!("`{}`", c.conflicting_identifier),
+                    Style::default().fg(WARN_COLOR),
+                ),
                 Span::styled(format!(" (from {})", c.file_path), subtle),
             ]));
         }

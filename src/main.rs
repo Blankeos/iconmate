@@ -475,11 +475,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str), anyhow::Error>((
-                content,
-                file_stem,
-                ext,
-            ))
+            Ok::<(String, String, &'static str), anyhow::Error>((content, file_stem, ext))
         }
 
         // Case 3: React
@@ -495,11 +491,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str), anyhow::Error>((
-                content,
-                file_stem,
-                ext,
-            ))
+            Ok::<(String, String, &'static str), anyhow::Error>((content, file_stem, ext))
         }
 
         // Case 4: Svelte
@@ -515,11 +507,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str), anyhow::Error>((
-                content,
-                file_stem,
-                ext,
-            ))
+            Ok::<(String, String, &'static str), anyhow::Error>((content, file_stem, ext))
         }
 
         // Case 5: Solid
@@ -535,11 +523,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str), anyhow::Error>((
-                content,
-                file_stem,
-                ext,
-            ))
+            Ok::<(String, String, &'static str), anyhow::Error>((content, file_stem, ext))
         }
 
         // Case 6: Vue
@@ -555,11 +539,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
                 config.icon.as_ref(),
                 &icon_alias,
             );
-            Ok::<(String, String, &'static str), anyhow::Error>((
-                content,
-                file_stem,
-                ext,
-            ))
+            Ok::<(String, String, &'static str), anyhow::Error>((content, file_stem, ext))
         }
 
         // Case 7: Only an icon is provided in `normal` mode.
@@ -670,8 +650,7 @@ async fn run_app_flutter(
     let Some(icon_source) = config.icon.as_ref() else {
         anyhow::bail!("The --icon argument is required for --preset flutter.");
     };
-    let svg_content =
-        _icon_source_to_svg(&Some(icon_source.clone()), None, false).await?;
+    let svg_content = _icon_source_to_svg(&Some(icon_source.clone()), None, false).await?;
 
     // Resolve SVG filename on disk. Prefer --filename, otherwise derive a
     // snake_case-ish stem from the icon source or name.
@@ -918,6 +897,7 @@ fn collect_icons_from_index_contents(contents: &str) -> Vec<IconEntry> {
     icons
 }
 
+#[cfg(test)]
 fn remove_selected_exports_from_index(contents: &str, selected_icons: &[IconEntry]) -> String {
     use std::collections::HashSet;
 
@@ -1079,9 +1059,7 @@ fn run_delete_flutter(
 
         // Also delete the SVG on disk if it resolves inside the configured folder.
         let asset_norm = entry.asset_path.replace('\\', "/");
-        let rel = if !folder_str.is_empty()
-            && asset_norm.starts_with(&format!("{folder_str}/"))
-        {
+        let rel = if !folder_str.is_empty() && asset_norm.starts_with(&format!("{folder_str}/")) {
             asset_norm[folder_str.len() + 1..].to_string()
         } else {
             asset_norm
@@ -1106,23 +1084,16 @@ fn run_delete_flutter(
     Ok(())
 }
 
-fn apply_deletions(folder: &Path, index_ts_path: &Path, to_delete: &[IconEntry]) -> anyhow::Result<()> {
+fn apply_deletions(
+    folder: &Path,
+    _index_ts_path: &Path,
+    to_delete: &[IconEntry],
+) -> anyhow::Result<()> {
     for icon in to_delete {
         let full_path = folder.join(&icon.file_path);
-        if full_path.exists() {
-            if let Err(e) = fs::remove_file(&full_path) {
-                eprintln!("Failed to delete {}: {}", full_path.display(), e);
-            } else {
-                eprintln!("Deleted: {}", full_path.display());
-            }
-        } else {
-            eprintln!("File not found: {}", full_path.display());
-        }
+        crate::utils::delete_icon_entry(full_path.to_string_lossy().as_ref())?;
+        eprintln!("Deleted: {}", full_path.display());
     }
-
-    let contents = fs::read_to_string(index_ts_path)?;
-    let updated = remove_selected_exports_from_index(&contents, to_delete);
-    fs::write(index_ts_path, updated)?;
     Ok(())
 }
 
@@ -1227,10 +1198,7 @@ async fn run_delete_prompt_mode(
     // Detect Flutter projects up-front; prompt-mode delete only supports
     // the JS preset path. Flutter users should use the TUI or pass
     // --name/--filename for non-interactive delete.
-    let resolved = config::resolve_tui_config(
-        Some(&folder),
-        cli.preset.as_ref(),
-    )?;
+    let resolved = config::resolve_tui_config(Some(&folder), cli.preset.as_ref())?;
     if resolved.preset == "flutter" {
         anyhow::bail!(
             "Interactive delete for the Flutter preset isn't supported here. Use the TUI (just run `iconmate`) or pass --name / --filename with --yes."
@@ -1278,28 +1246,7 @@ async fn run_delete_prompt_mode(
         return Ok(());
     }
 
-    // Step 7: Delete the icons
-    for icon_to_delete in &selected_icons {
-        let full_path = folder.join(&icon_to_delete.file_path);
-
-        // Delete the file
-        if full_path.exists() {
-            if let Err(e) = fs::remove_file(&full_path) {
-                eprintln!("Failed to delete {}: {}", full_path.display(), e);
-            } else {
-                eprintln!("Deleted: {}", full_path.display());
-            }
-        } else {
-            eprintln!("File not found: {}", full_path.display());
-        }
-    }
-
-    let updated_index_content = remove_selected_exports_from_index(&contents, &selected_icons);
-
-    // Write the updated index.ts
-    fs::write(&index_ts_path, updated_index_content)?;
-
-    Ok(())
+    apply_deletions(&folder, &index_ts_path, &selected_icons)
 }
 
 fn run_sync_command(
@@ -1316,10 +1263,7 @@ fn run_sync_command(
     }
 
     let folder_override = command_folder.or(cli.folder.as_ref());
-    let resolved = config::resolve_tui_config(
-        folder_override,
-        cli.preset.as_ref(),
-    )?;
+    let resolved = config::resolve_tui_config(folder_override, cli.preset.as_ref())?;
     let folder = PathBuf::from(&resolved.folder);
 
     let mut rename_map: HashMap<String, String> = HashMap::new();
@@ -1429,10 +1373,7 @@ async fn main() -> anyhow::Result<()> {
             ref renames,
         }) => run_sync_command(&args, folder.as_ref(), apply, prune, renames),
         None => {
-            let resolved = config::resolve_tui_config(
-                args.folder.as_ref(),
-                args.preset.as_ref(),
-            )?;
+            let resolved = config::resolve_tui_config(args.folder.as_ref(), args.preset.as_ref())?;
 
             for warning in &resolved.warnings {
                 eprintln!("Warning: {warning}");

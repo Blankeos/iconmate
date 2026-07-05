@@ -88,11 +88,7 @@ impl App {
                     }
                     if abs_file_path.exists() {
                         if let Err(e) = std::fs::remove_file(&abs_file_path) {
-                            eprintln!(
-                                "Failed to delete {}: {}",
-                                abs_file_path.display(),
-                                e
-                            );
+                            eprintln!("Failed to delete {}: {}", abs_file_path.display(), e);
                         }
                     }
                 } else if let Err(e) =
