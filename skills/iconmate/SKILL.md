@@ -7,7 +7,7 @@ description: >-
   "reconcile icons", "iconmate", "iconify".
 metadata:
   author: blankeos
-  version: "1.2.0"
+  version: "1.2.1"
   repository: https://github.com/Blankeos/iconmate
 license: MIT
 ---

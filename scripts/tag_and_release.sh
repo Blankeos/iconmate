@@ -51,6 +51,14 @@ if [ -f "npm/package.json" ]; then
     git add npm/package.json
 fi
 
+# Update skills/iconmate/SKILL.md metadata version if it exists
+if [ -f "skills/iconmate/SKILL.md" ]; then
+    echo "🦋 Updating skills/iconmate/SKILL.md metadata version to ${NEW}"
+    sed -i.bak "s/^  version: \"[^\"]*\"/  version: \"${NEW}\"/" skills/iconmate/SKILL.md
+    rm skills/iconmate/SKILL.md.bak
+    git add skills/iconmate/SKILL.md
+fi
+
 # Update Cargo.lock to reflect the new version
 echo "🦋 Updating Cargo.lock..."
 cargo generate-lockfile
