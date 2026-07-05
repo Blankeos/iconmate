@@ -3,9 +3,10 @@ use std::process::Command;
 use crate::app_state::{App, AppFocus};
 use crate::utils::{PRESETS_OPTIONS, Preset, PresetOption, popup_area};
 use ratatui::Frame;
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Alignment, Constraint};
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, ListItem, Paragraph};
 use tui_textarea::{Input, Key, TextArea};
 
@@ -15,6 +16,7 @@ const PRESET_FIELD_IDX: usize = 0;
 const ICON_FIELD_IDX: usize = 1;
 const FILENAME_FIELD_IDX: usize = 2;
 const NAME_FIELD_IDX: usize = 3;
+const SUBMIT_FIELD_IDX: usize = 4;
 
 /// Preview the call-site shape the user will see once this icon is added.
 /// For Flutter, show `AppIcons.chevronRight` using the configured class and
@@ -136,6 +138,55 @@ impl AddPopupState {
         }
     }
 
+    fn focusable_count(&self) -> usize {
+        SUBMIT_FIELD_IDX + 1
+    }
+
+    fn save_current_value(&mut self) {
+        match self.current_input {
+            PRESET_FIELD_IDX => {
+                if !self.presets_filtered.is_empty()
+                    && self.preset_index < self.presets_filtered.len()
+                {
+                    self.preset = Some(self.presets_filtered[self.preset_index].preset.clone());
+                }
+            }
+            ICON_FIELD_IDX => {
+                self.icon = Some(self.inputs[ICON_FIELD_IDX].lines().join("\n"));
+                self.apply_icon_based_defaults();
+            }
+            FILENAME_FIELD_IDX => {
+                self.filename = Some(self.inputs[FILENAME_FIELD_IDX].lines().join(""));
+            }
+            NAME_FIELD_IDX => {
+                self.name = Some(self.inputs[NAME_FIELD_IDX].lines().join(""));
+            }
+            _ => {}
+        }
+    }
+
+    fn focus_next(&mut self) {
+        self.current_input = (self.current_input + 1) % self.focusable_count();
+        self.sync_cursor(self.current_input);
+        self.clear_status();
+    }
+
+    fn focus_previous(&mut self) {
+        self.current_input =
+            (self.current_input + self.focusable_count() - 1) % self.focusable_count();
+        self.sync_cursor(self.current_input);
+        self.clear_status();
+    }
+
+    fn move_focus(&mut self, backward: bool) {
+        self.save_current_value();
+        if backward {
+            self.focus_previous();
+        } else {
+            self.focus_next();
+        }
+    }
+
     pub fn handlekeys_preset_input(&mut self, input: Input) {
         if self.current_input == PRESET_FIELD_IDX {
             if Self::is_paste_shortcut(&input) && self.paste_into_current_input() {
@@ -144,15 +195,7 @@ impl AddPopupState {
 
             match input.key {
                 Key::Tab | Key::Enter => {
-                    // Save the selected preset
-                    if !self.presets_filtered.is_empty()
-                        && self.preset_index < self.presets_filtered.len()
-                    {
-                        self.preset = Some(self.presets_filtered[self.preset_index].preset.clone());
-                    }
-
-                    self.current_input = (self.current_input + 1) % self.inputs.len();
-                    self.sync_cursor(self.current_input);
+                    self.move_focus(matches!(input.key, Key::Tab) && input.shift);
                 }
                 Key::Up => {
                     let len = self.presets_filtered.len();
@@ -212,11 +255,7 @@ impl AddPopupState {
 
         match input.key {
             Key::Tab => {
-                // Save the icon value
-                self.icon = Some(self.inputs[ICON_FIELD_IDX].lines().join("\n"));
-                self.apply_icon_based_defaults();
-                self.current_input = (self.current_input + 1) % self.inputs.len();
-                self.sync_cursor(self.current_input);
+                self.move_focus(input.shift);
             }
             _ => {
                 self.inputs[self.current_input].input(input);
@@ -233,17 +272,7 @@ impl AddPopupState {
 
         match input.key {
             Key::Tab | Key::Enter => {
-                // Save the current input value before moving to next
-                let value = self.inputs[self.current_input].lines().join("");
-                match self.current_input {
-                    // 0 => self.folder = Some(value),                    // folder
-                    FILENAME_FIELD_IDX => self.filename = Some(value), // filename
-                    NAME_FIELD_IDX => self.name = Some(value),         // name
-                    _ => {}
-                }
-                self.current_input = (self.current_input + 1) % self.inputs.len();
-                self.sync_cursor(self.current_input);
-                self.clear_status();
+                self.move_focus(matches!(input.key, Key::Tab) && input.shift);
             }
             _ => {
                 self.inputs[self.current_input].input(input);
@@ -254,6 +283,17 @@ impl AddPopupState {
 }
 
 impl App {
+    pub fn handle_key_event_add_popup(&mut self, key_event: KeyEvent) {
+        if matches!(key_event.code, KeyCode::BackTab) {
+            if let Some(state) = self.add_popup_state.as_mut() {
+                state.move_focus(true);
+            }
+            return;
+        }
+
+        self.handlekeys_add_popup(Input::from(key_event));
+    }
+
     pub fn init_add_popup(&mut self) {
         let configured_preset = PRESETS_OPTIONS
             .iter()
@@ -426,7 +466,7 @@ impl App {
         let should_submit = self
             .add_popup_state
             .as_ref()
-            .map(|state| state.current_input == NAME_FIELD_IDX && input.key == Key::Enter)
+            .map(|state| state.current_input == SUBMIT_FIELD_IDX && input.key == Key::Enter)
             .unwrap_or(false);
 
         if should_submit {
@@ -444,6 +484,10 @@ impl App {
             match state.current_input {
                 PRESET_FIELD_IDX => state.handlekeys_preset_input(_input),
                 ICON_FIELD_IDX => state.handlekeys_text_area(_input),
+                SUBMIT_FIELD_IDX => match _input.key {
+                    Key::Tab => state.move_focus(_input.shift),
+                    _ => {}
+                },
                 _ => state.handlekeys_text_input(_input),
             }
 
@@ -476,13 +520,16 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
             Constraint::Length(3),
             Constraint::Length(1),
             Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
         .split(body_area);
     let preset_area = layout[0];
     let icon_area = layout[2];
     let filename_area = layout[4];
     let name_area = layout[6];
-    let footer_area = layout[8];
+    let submit_area = layout[8];
+    let footer_area = layout[10];
 
     if let Some(state) = &mut app.add_popup_state {
         let labels: Vec<String> = vec![
@@ -637,6 +684,22 @@ pub fn render_add_popup(f: &mut Frame, app: &mut App) {
         state.inputs[NAME_FIELD_IDX].set_cursor_line_style(Style::default());
         f.render_widget(&state.inputs[NAME_FIELD_IDX], name_area);
 
+        let submit_focused = state.current_input == SUBMIT_FIELD_IDX;
+        let submit_style = if submit_focused {
+            Style::default()
+                .bg(crate::views::theme::ROW_HIGHLIGHT_BG)
+                .fg(crate::views::theme::BASE_BG)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(crate::views::theme::ACCENT)
+                .add_modifier(Modifier::BOLD)
+        };
+        let submit_button =
+            Paragraph::new(Line::from(vec![Span::styled(" Submit ", submit_style)]))
+                .alignment(Alignment::Left);
+        f.render_widget(submit_button, submit_area);
+
         let footer = if let Some(message) = &state.status_message {
             let color = if state.status_is_error {
                 crate::views::theme::ERROR
@@ -706,6 +769,71 @@ mod tests {
         assert!(
             !app.should_quit,
             "typing q in add popup should not quit app"
+        );
+    }
+
+    #[test]
+    fn add_popup_supports_reverse_focus_and_submit_button_focus() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&folder).expect("icons folder should be created");
+
+        let mut app = App::new(test_config(folder.to_string_lossy().into_owned()));
+        app.init_add_popup();
+
+        app.handlekeys_add_popup(Input {
+            key: Key::Tab,
+            shift: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            app.add_popup_state.as_ref().unwrap().current_input,
+            SUBMIT_FIELD_IDX
+        );
+
+        app.handlekeys_add_popup(Input {
+            key: Key::Tab,
+            shift: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            app.add_popup_state.as_ref().unwrap().current_input,
+            NAME_FIELD_IDX
+        );
+
+        app.handlekeys_add_popup(Input {
+            key: Key::Tab,
+            ..Default::default()
+        });
+        assert_eq!(
+            app.add_popup_state.as_ref().unwrap().current_input,
+            SUBMIT_FIELD_IDX
+        );
+    }
+
+    #[test]
+    fn add_popup_supports_crossterm_backtab() {
+        use ratatui::crossterm::event::{
+            KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
+        };
+
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let folder = temp_dir.path().join("icons");
+        std::fs::create_dir_all(&folder).expect("icons folder should be created");
+
+        let mut app = App::new(test_config(folder.to_string_lossy().into_owned()));
+        app.init_add_popup();
+
+        app.handle_key_event_add_popup(KeyEvent {
+            code: KeyCode::BackTab,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        });
+
+        assert_eq!(
+            app.add_popup_state.as_ref().unwrap().current_input,
+            SUBMIT_FIELD_IDX
         );
     }
 }

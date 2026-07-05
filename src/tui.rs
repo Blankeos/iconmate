@@ -39,8 +39,13 @@ pub async fn run(config: AppConfig) -> Result<(), anyhow::Error> {
         if ratatui::crossterm::event::poll(Duration::from_millis(16))? {
             let event = ratatui::crossterm::event::read()?;
             match event {
-                Event::Key(_) => {
-                    let input: Input = event.into();
+                Event::Key(key_event) => {
+                    if matches!(app.app_focus, AppFocus::AddPopup) {
+                        app.handle_key_event_add_popup(key_event);
+                        continue;
+                    }
+
+                    let input: Input = key_event.into();
                     if matches!(
                         input,
                         Input {
