@@ -7,13 +7,16 @@ default:
 config-schema:
     cd config-gen && bun install && bun run generate
 
-# Tag and release a new version - custom script by carlo.
+dev:
+    cargo r
 
-# Usage: just tag_and_release
-tag: tag_and_release
-
-tag_and_release:
-    sh tag_and_release.sh
+dist-build *args:
+    dist build {{ args }}
 
 sync_readme:
     cp README.md npm/README.md
+
+# Release: bump versions, create release commit, and create a git tag.
+# Usage: just tag [patch|minor|major]
+tag bump="":
+    sh scripts/tag_and_release.sh {{ bump }}

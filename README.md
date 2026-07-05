@@ -43,6 +43,7 @@ Use [icones.js.org](https://icones.js.org), a direct SVG URL, or raw SVG markup.
 
 ```bash
 # Install
+brew install blankeos/tap/iconmate # Homebrew (macOS/Linux)
 npm install -g iconmate
 
 # Run the TUI in your project 🚀
@@ -145,10 +146,11 @@ Example global config:
 ## Installation
 
 ```sh
-npm install -g iconmate  # npm (or use npx)
-bun install -g iconmate  # or bun (or use bunx)
-cargo binstall iconmate  # or cargo-binstall (prebuilt binary, faster)
-cargo install iconmate   # or cargo (build from source)
+brew install blankeos/tap/iconmate # Homebrew (macOS/Linux)
+npm install -g iconmate            # or npm
+bun install -g iconmate            # or bun
+cargo binstall iconmate            # or cargo-binstall (prebuilt binary, faster)
+cargo install iconmate             # or cargo (build from source)
 curl -sSL https://raw.githubusercontent.com/Blankeos/iconmate/main/install.sh | sh # or linux/macos (via curl)
 ```
 
