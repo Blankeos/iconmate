@@ -257,6 +257,12 @@ impl App {
                     .main_state
                     .set_status(format!("Failed to open icon: {}", error), true),
             },
+            Key::Char('p') => match self.preview_selected_icon() {
+                Ok(()) => self.main_state.clear_status(),
+                Err(error) => self
+                    .main_state
+                    .set_status(format!("Failed to preview icon: {}", error), true),
+            },
             Key::Char('/') => {
                 self.main_state.main_state_focus = MainStateFocus::Search;
             }
@@ -273,6 +279,16 @@ impl App {
     }
 
     pub fn open_selected_icon(&self) -> anyhow::Result<crate::viewer::OpenSvgOutcome> {
+        let absolute_path = self.selected_icon_path()?;
+        crate::viewer::open_svg_with_fallback(&absolute_path, self.config.svg_viewer_cmd.as_deref())
+    }
+
+    pub fn preview_selected_icon(&self) -> anyhow::Result<()> {
+        let absolute_path = self.selected_icon_path()?;
+        crate::viewer::preview_svg_in_browser(&absolute_path)
+    }
+
+    fn selected_icon_path(&self) -> anyhow::Result<std::path::PathBuf> {
         use std::path::Path;
 
         let item_list = if self.main_state.search_items_value.is_empty() {
@@ -285,13 +301,11 @@ impl App {
             .ok_or_else(|| anyhow::anyhow!("No icon selected."))?;
 
         let file_path = Path::new(&item.file_path);
-        let absolute_path = if file_path.is_absolute() {
+        Ok(if file_path.is_absolute() {
             file_path.to_path_buf()
         } else {
             Path::new(&self.config.folder).join(file_path)
-        };
-
-        crate::viewer::open_svg_with_fallback(&absolute_path, self.config.svg_viewer_cmd.as_deref())
+        })
     }
 
     pub fn handlekeys_main(&mut self, input: Input) {
@@ -495,6 +509,7 @@ pub fn render_main_view(f: &mut Frame, area: Rect, app: &mut App) {
         ("Delete", "d"),
         ("Rename", "r"),
         ("Open", "o"),
+        ("Preview", "p"),
         ("Sync", "S"),
         ("Help", "?"),
         ("Quit", "q"),

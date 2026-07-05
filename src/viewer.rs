@@ -1,4 +1,9 @@
 use anyhow::Context;
+use regex::Regex;
+use reqwest::Url;
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -8,6 +13,195 @@ pub enum OpenSvgOutcome {
     OpenedWithOsDefault,
     OpenedWithOsDefaultAfterCustomFailure,
     OpenedWithWebPreview(String),
+}
+
+fn svg_preview_contents(contents: &str) -> anyhow::Result<String> {
+    let svg = extract_svg_fragment(contents)
+        .ok_or_else(|| anyhow::anyhow!("No <svg> element found in selected icon."))?;
+    Ok(ensure_svg_xmlns(&sanitize_svg_for_browser(svg)))
+}
+
+fn extract_svg_fragment(contents: &str) -> Option<&str> {
+    let full_svg = Regex::new(r"(?is)<svg\b[^>]*>.*?</svg>").ok()?;
+    if let Some(found) = full_svg.find(contents) {
+        return Some(found.as_str());
+    }
+
+    let self_closing_svg = Regex::new(r"(?is)<svg\b[^>]*/>").ok()?;
+    self_closing_svg.find(contents).map(|found| found.as_str())
+}
+
+fn sanitize_svg_for_browser(svg: &str) -> String {
+    let mut output = svg.to_string();
+
+    for (from, to) in JSX_SVG_ATTRIBUTE_REPLACEMENTS {
+        output = output.replace(from, to);
+    }
+
+    output = replace_jsx_static_expression_attributes(&output);
+
+    for pattern in [
+        r"(?s)\s*\{\s*/\*.*?\*/\s*\}",
+        r"(?s)\s+\{\s*\.\.\.[^}]+\}",
+        r#"\s+v-bind(?::[A-Za-z0-9_.:-]+)?\s*=\s*("[^"]*"|'[^']*')"#,
+        r#"\s+:[A-Za-z0-9_.:-]+\s*=\s*("[^"]*"|'[^']*')"#,
+        r#"\s+(?:v-[A-Za-z0-9_.:-]+|@[A-Za-z0-9_.:-]+)\s*=\s*("[^"]*"|'[^']*')"#,
+        r"(?s)\s+[A-Za-z_:][A-Za-z0-9_:.-]*\s*=\s*\{[^}]*\}",
+    ] {
+        let re = Regex::new(pattern).expect("valid preview sanitizer regex");
+        output = re.replace_all(&output, "").to_string();
+    }
+
+    output
+}
+
+fn replace_jsx_static_expression_attributes(svg: &str) -> String {
+    let mut output = svg.to_string();
+
+    for pattern in [r#"=\{\s*"([^"]*)"\s*\}"#, r#"=\{\s*'([^']*)'\s*\}"#] {
+        let re = Regex::new(pattern).expect("valid JSX string attribute regex");
+        output = re
+            .replace_all(&output, |captures: &regex::Captures<'_>| {
+                format!("=\"{}\"", escape_xml_attribute(&captures[1]))
+            })
+            .to_string();
+    }
+
+    let scalar_re = Regex::new(r"=\{\s*([0-9]+(?:\.[0-9]+)?|true|false)\s*\}")
+        .expect("valid JSX scalar attribute regex");
+    scalar_re
+        .replace_all(&output, |captures: &regex::Captures<'_>| {
+            format!("=\"{}\"", &captures[1])
+        })
+        .to_string()
+}
+
+fn escape_xml_attribute(value: &str) -> String {
+    value.replace('&', "&amp;").replace('"', "&quot;")
+}
+
+fn ensure_svg_xmlns(svg: &str) -> String {
+    let Some(tag_end) = svg.find('>') else {
+        return svg.to_string();
+    };
+    let opening_tag = &svg[..tag_end];
+    if opening_tag.contains("xmlns=") || opening_tag.contains("xmlns:") {
+        return svg.to_string();
+    }
+
+    format!(
+        "{} xmlns=\"http://www.w3.org/2000/svg\"{}",
+        opening_tag,
+        &svg[tag_end..]
+    )
+}
+
+fn preview_file_path(source_path: &Path, preview_svg: &str) -> std::path::PathBuf {
+    let mut hasher = DefaultHasher::new();
+    source_path.hash(&mut hasher);
+    preview_svg.hash(&mut hasher);
+    std::env::temp_dir().join(format!(
+        "iconmate-preview-{}-{:x}.svg",
+        std::process::id(),
+        hasher.finish()
+    ))
+}
+
+const JSX_SVG_ATTRIBUTE_REPLACEMENTS: &[(&str, &str)] = &[
+    ("accentHeight=", "accent-height="),
+    ("alignmentBaseline=", "alignment-baseline="),
+    ("baselineShift=", "baseline-shift="),
+    ("clipPath=", "clip-path="),
+    ("clipRule=", "clip-rule="),
+    ("colorInterpolation=", "color-interpolation="),
+    ("colorInterpolationFilters=", "color-interpolation-filters="),
+    ("colorProfile=", "color-profile="),
+    ("colorRendering=", "color-rendering="),
+    ("dominantBaseline=", "dominant-baseline="),
+    ("enableBackground=", "enable-background="),
+    ("fillOpacity=", "fill-opacity="),
+    ("fillRule=", "fill-rule="),
+    ("floodColor=", "flood-color="),
+    ("floodOpacity=", "flood-opacity="),
+    ("fontFamily=", "font-family="),
+    ("fontSize=", "font-size="),
+    ("fontSizeAdjust=", "font-size-adjust="),
+    ("fontStretch=", "font-stretch="),
+    ("fontStyle=", "font-style="),
+    ("fontVariant=", "font-variant="),
+    ("fontWeight=", "font-weight="),
+    (
+        "glyphOrientationHorizontal=",
+        "glyph-orientation-horizontal=",
+    ),
+    ("glyphOrientationVertical=", "glyph-orientation-vertical="),
+    ("imageRendering=", "image-rendering="),
+    ("letterSpacing=", "letter-spacing="),
+    ("lightingColor=", "lighting-color="),
+    ("markerEnd=", "marker-end="),
+    ("markerMid=", "marker-mid="),
+    ("markerStart=", "marker-start="),
+    ("overlinePosition=", "overline-position="),
+    ("overlineThickness=", "overline-thickness="),
+    ("paintOrder=", "paint-order="),
+    ("pointerEvents=", "pointer-events="),
+    ("shapeRendering=", "shape-rendering="),
+    ("stopColor=", "stop-color="),
+    ("stopOpacity=", "stop-opacity="),
+    ("strikethroughPosition=", "strikethrough-position="),
+    ("strikethroughThickness=", "strikethrough-thickness="),
+    ("strokeDasharray=", "stroke-dasharray="),
+    ("strokeDashoffset=", "stroke-dashoffset="),
+    ("strokeLinecap=", "stroke-linecap="),
+    ("strokeLinejoin=", "stroke-linejoin="),
+    ("strokeMiterlimit=", "stroke-miterlimit="),
+    ("strokeOpacity=", "stroke-opacity="),
+    ("strokeWidth=", "stroke-width="),
+    ("textAnchor=", "text-anchor="),
+    ("textDecoration=", "text-decoration="),
+    ("textRendering=", "text-rendering="),
+    ("transformOrigin=", "transform-origin="),
+    ("underlinePosition=", "underline-position="),
+    ("underlineThickness=", "underline-thickness="),
+    ("unicodeBidi=", "unicode-bidi="),
+    ("vectorEffect=", "vector-effect="),
+    ("wordSpacing=", "word-spacing="),
+    ("writingMode=", "writing-mode="),
+    ("xHeight=", "x-height="),
+    ("xlinkActuate=", "xlink:actuate="),
+    ("xlinkArcrole=", "xlink:arcrole="),
+    ("xlinkHref=", "xlink:href="),
+    ("xlinkRole=", "xlink:role="),
+    ("xlinkShow=", "xlink:show="),
+    ("xlinkTitle=", "xlink:title="),
+    ("xlinkType=", "xlink:type="),
+    ("xmlBase=", "xml:base="),
+    ("xmlLang=", "xml:lang="),
+    ("xmlSpace=", "xml:space="),
+    ("xmlnsXlink=", "xmlns:xlink="),
+    ("className=", "class="),
+];
+
+pub fn preview_svg_in_browser(svg_path: &Path) -> anyhow::Result<()> {
+    let resolved_path = crate::utils::resolve_existing_icon_path(svg_path);
+    let svg_path = resolved_path.as_path();
+
+    if !svg_path.exists() {
+        anyhow::bail!("Icon file not found: {}", svg_path.display());
+    }
+
+    let contents = fs::read_to_string(svg_path)
+        .with_context(|| format!("Failed to read icon file {}", svg_path.display()))?;
+    let preview_svg = svg_preview_contents(&contents)?;
+    let preview_path = preview_file_path(svg_path, &preview_svg);
+
+    fs::write(&preview_path, preview_svg)
+        .with_context(|| format!("Failed to write preview SVG {}", preview_path.display()))?;
+
+    let preview_url = Url::from_file_path(&preview_path)
+        .map_err(|_| anyhow::anyhow!("Failed to build file URL for {}", preview_path.display()))?;
+    open_url_in_browser(preview_url.as_str())
+        .with_context(|| format!("Failed to open preview SVG {}", preview_path.display()))
 }
 
 pub fn open_svg_with_fallback(
@@ -199,5 +393,60 @@ mod tests {
     fn returns_none_for_non_iconify_stem() {
         let path = Path::new("/tmp/logo.svg");
         assert_eq!(iconify_web_preview_url(path), None);
+    }
+
+    #[test]
+    fn extracts_and_sanitizes_react_svg_component() {
+        let contents = r#"
+import type { SVGProps } from 'react';
+
+export default function Icon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} className="size-4" strokeWidth={2} fillRule="evenodd" viewBox="0 0 24 24"><path d="M0 0" /></svg>
+  );
+}
+"#;
+
+        let svg = svg_preview_contents(contents).unwrap();
+        assert!(svg.starts_with("<svg "));
+        assert!(svg.contains("xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(svg.contains("class=\"size-4\""));
+        assert!(svg.contains("stroke-width=\"2\""));
+        assert!(svg.contains("fill-rule=\"evenodd\""));
+        assert!(!svg.contains("{...props}"));
+        assert!(!svg.contains("className"));
+        assert!(!svg.contains("strokeWidth"));
+    }
+
+    #[test]
+    fn sanitizes_svelte_and_vue_dynamic_bindings() {
+        let svelte = r#"
+<script lang="ts">
+  let { ...props } = $props();
+</script>
+
+<svg {...props} viewBox="0 0 24 24"><path strokeLinecap="round" /></svg>
+"#;
+        let vue = r#"
+<template>
+  <svg v-bind="$props" :class="size" @click="onClick" viewBox="0 0 24 24"><path :d="path" /></svg>
+</template>
+"#;
+
+        let svelte_svg = svg_preview_contents(svelte).unwrap();
+        assert!(svelte_svg.contains("stroke-linecap=\"round\""));
+        assert!(!svelte_svg.contains("{...props}"));
+
+        let vue_svg = svg_preview_contents(vue).unwrap();
+        assert!(!vue_svg.contains("v-bind"));
+        assert!(!vue_svg.contains(":class"));
+        assert!(!vue_svg.contains("@click"));
+        assert!(!vue_svg.contains(":d"));
+    }
+
+    #[test]
+    fn errors_when_no_svg_fragment_exists() {
+        let error = svg_preview_contents("export default null").unwrap_err();
+        assert!(error.to_string().contains("No <svg> element"));
     }
 }
